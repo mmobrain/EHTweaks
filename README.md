@@ -25,6 +25,7 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 
 ### 💎 Echoes Filter
 *   Adds a filter bar to the bottom of the **Echoes (Empowerment)** frame to quickly find specific perks in your collection.
+
 ![ETH tweaks 3](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/1.jpg)
 
 ## Commands
