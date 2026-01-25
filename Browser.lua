@@ -1,6 +1,6 @@
 -- Author: Skulltrail
--- EHtweaks: Skill & Perk Browser
--- Features: Tabs (Skills/Echoes), Merged Rank Descriptions, Search, Jump to Node, Chat Links
+-- EHTweaks: Skill & Perk Browser
+-- Features: Tabs (Skills/Echoes/Settings), Merged Rank Descriptions, Search, Jump to Node, Chat Links
 
 local addonName, addon = ...
 
@@ -19,38 +19,11 @@ local QUALITY_COLORS = {
 }
 
 -- --- Data State ---
-local activeTab = 1 -- 1: Skills, 2: Echoes
+local activeTab = 1 -- 1: Skills, 2: Echoes, 3: Settings
 local browserData = {}
 local filteredData = {}
 local browserFrame = nil
 local isDataDirty = true
-
--- --- Helper: Chat Link ---
-local function TryLinkToChat(spellId)
-    if IsControlKeyDown() and IsAltKeyDown() and spellId then
-        local link = GetSpellLink(spellId)
-        
-        -- Fallback if GetSpellLink returns nil (common for custom server spells)
-        if not link then
-            local name = GetSpellInfo(spellId)
-            if name then
-                link = "|cff71d5ff|Hspell:"..spellId.."|h["..name.."]|h|r"
-            end
-        end
-
-        if link then
-            local activeEditBox = ChatEdit_GetLastActiveWindow()
-            if activeEditBox:IsVisible() then
-                activeEditBox:Insert(link)
-            else
-                -- If no edit box is open, open one
-                ChatFrame_OpenChat(link)
-            end
-            return true
-        end
-    end
-    return false
-end
 
 -- --- Helper: Text Merging ---
 
@@ -207,7 +180,7 @@ local function RefreshData()
         browserData = BuildPerkData()
     end
     
-    local text = browserFrame and browserFrame.searchBox:GetText() or ""
+    local text = (browserFrame and browserFrame.searchBox and browserFrame.searchBox:GetText()) or ""
     if text == "" then
         filteredData = browserData
     else
@@ -231,6 +204,32 @@ end
 -- --- UI Logic ---
 
 local function UpdateScroll()
+    if not browserFrame then return end 
+
+    if activeTab == 3 then
+        -- Hide List UI components
+        if browserFrame.scroll then browserFrame.scroll:Hide() end
+        if browserFrame.searchBox then browserFrame.searchBox:Hide() end
+        if browserFrame.searchLabel then browserFrame.searchLabel:Hide() end
+        
+        -- HIDE ALL ROWS
+        if browserFrame.rows then
+            for _, row in ipairs(browserFrame.rows) do
+                row:Hide()
+            end
+        end
+        
+        -- Show Settings
+        if browserFrame.settingsFrame then browserFrame.settingsFrame:Show() end
+        return
+    else
+        -- Show List UI
+        if browserFrame.scroll then browserFrame.scroll:Show() end
+        if browserFrame.searchBox then browserFrame.searchBox:Show() end
+        if browserFrame.searchLabel then browserFrame.searchLabel:Show() end
+        if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
+    end
+
     if isDataDirty then RefreshData() end
     
     local FauxScrollFrame_Update = FauxScrollFrame_Update
@@ -288,16 +287,18 @@ end
 local function SetTab(id)
     activeTab = id
     isDataDirty = true
-    PanelTemplates_SetTab(browserFrame, id)
-    PanelTemplates_UpdateTabs(browserFrame)
-    browserFrame.searchBox:SetText("") 
+    if browserFrame then
+        PanelTemplates_SetTab(browserFrame, id)
+        PanelTemplates_UpdateTabs(browserFrame)
+        if browserFrame.searchBox then browserFrame.searchBox:SetText("") end
+    end
     UpdateScroll()
 end
 
 local function CreateBrowserFrame()
     if browserFrame then return browserFrame end
     
-    local f = CreateFrame("Frame", "EHtweaks_BrowserFrame", UIParent)
+    local f = CreateFrame("Frame", "EHTweaks_BrowserFrame", UIParent)
     f:SetSize(400, 520)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
@@ -314,6 +315,8 @@ local function CreateBrowserFrame()
         insets = { left = 8, right = 8, top = 8, bottom = 8 }
     })
     
+    browserFrame = f
+    
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("TOP", 0, -12)
     title:SetText(BROWSER_TITLE)
@@ -322,7 +325,8 @@ local function CreateBrowserFrame()
     close:SetPoint("TOPRIGHT", -5, -5)
     
     -- TABS
-    f.numTabs = 2
+    f.numTabs = 3
+    
     local tab1 = CreateFrame("Button", "$parentTab1", f, "CharacterFrameTabButtonTemplate")
     tab1:SetID(1)
     tab1:SetText("Skill Tree")
@@ -337,7 +341,14 @@ local function CreateBrowserFrame()
     tab2:SetScript("OnClick", function() SetTab(2) end)
     PanelTemplates_TabResize(tab2, 0)
     
-    PanelTemplates_SetNumTabs(f, 2)
+    local tab3 = CreateFrame("Button", "$parentTab3", f, "CharacterFrameTabButtonTemplate")
+    tab3:SetID(3)
+    tab3:SetText("Settings")
+    tab3:SetPoint("LEFT", tab2, "RIGHT", -16, 0)
+    tab3:SetScript("OnClick", function() SetTab(3) end)
+    PanelTemplates_TabResize(tab3, 0)
+    
+    PanelTemplates_SetNumTabs(f, 3)
     PanelTemplates_SetTab(f, 1)
     PanelTemplates_UpdateTabs(f)
     
@@ -355,9 +366,25 @@ local function CreateBrowserFrame()
     local sbLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sbLabel:SetPoint("BOTTOMLEFT", sb, "TOPLEFT", -2, 0)
     sbLabel:SetText("Filter (Name/Desc):")
+    f.searchLabel = sbLabel
+    
+    -- Clear Button for Browser Search
+    local clearBtn = CreateFrame("Button", nil, sb)
+    clearBtn:SetSize(14, 14)
+    clearBtn:SetPoint("RIGHT", sb, "RIGHT", -4, 0)
+    clearBtn:SetNormalTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    clearBtn:SetAlpha(0.5)
+    clearBtn:SetScript("OnEnter", function(self) self:SetAlpha(1) end)
+    clearBtn:SetScript("OnLeave", function(self) self:SetAlpha(0.5) end)
+    clearBtn:SetScript("OnClick", function()
+        sb:SetText("")
+        sb:ClearFocus()
+        RefreshData()
+        UpdateScroll()
+    end)
     
     -- Scroll Frame
-    local sf = CreateFrame("ScrollFrame", "EHtweaks_BrowserScroll", f, "FauxScrollFrameTemplate")
+    local sf = CreateFrame("ScrollFrame", "EHTweaks_BrowserScroll", f, "FauxScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", 10, -70)
     sf:SetPoint("BOTTOMRIGHT", -30, 30)
     sf:SetScript("OnVerticalScroll", function(self, offset)
@@ -396,8 +423,6 @@ local function CreateBrowserFrame()
         cost:SetPoint("RIGHT", -10, 0)
         row.cost = cost
         
-        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        
         row:SetScript("OnEnter", function(self)
             if not self.data then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -421,7 +446,6 @@ local function CreateBrowserFrame()
             end
             
             GameTooltip:AddLine(" ")
-            
             if self.data.isPerk then
                 GameTooltip:AddLine("Current Stack: " .. self.data.stack, 1, 1, 1)
             else
@@ -436,10 +460,8 @@ local function CreateBrowserFrame()
         row:SetScript("OnClick", function(self)
             if not self.data then return end
             
-            -- Chat Link Logic (Universal)
-            if TryLinkToChat(self.data.spellId) then return end
+            if EHTweaks_HandleLinkClick(self.data.spellId) then return end
             
-            -- Normal Click Logic (Go To)
             if self.data.isPerk then return end
             
             if _G.skillTreeFrame then _G.skillTreeFrame:Show() end
@@ -488,7 +510,52 @@ local function CreateBrowserFrame()
         f.rows[i] = row
     end
     
-    browserFrame = f
+    -- SETTINGS FRAME
+    local settings = CreateFrame("Frame", nil, f)
+    settings:SetAllPoints(f)
+    settings:Hide()
+    f.settingsFrame = settings
+    
+    local sTitle = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    sTitle:SetPoint("TOPLEFT", 20, -50)
+    sTitle:SetText("EHTweaks Settings")
+    
+    local cb1 = CreateFrame("CheckButton", "EHTweaks_CB_Filters", settings, "UICheckButtonTemplate")
+    cb1:SetPoint("TOPLEFT", sTitle, "BOTTOMLEFT", 0, -20)
+    _G[cb1:GetName().."Text"]:SetText("Enhance Project Ebonhold with Filters")
+    cb1:SetScript("OnClick", function(self)
+        if EHTweaksDB then
+            EHTweaksDB.enableFilters = self:GetChecked() and true or false
+        end
+    end)
+    -- Init state
+    if EHTweaksDB then cb1:SetChecked(EHTweaksDB.enableFilters) end
+    
+    local cb2 = CreateFrame("CheckButton", "EHTweaks_CB_Links", settings, "UICheckButtonTemplate")
+    cb2:SetPoint("TOPLEFT", cb1, "BOTTOMLEFT", 0, -10)
+    _G[cb2:GetName().."Text"]:SetText("Enhance Project Ebonhold with Chat Links")
+    cb2:SetScript("OnClick", function(self)
+        if EHTweaksDB then
+            EHTweaksDB.enableChatLinks = self:GetChecked() and true or false
+        end
+    end)
+    -- Init state
+    if EHTweaksDB then cb2:SetChecked(EHTweaksDB.enableChatLinks) end
+    
+    -- Apply & Reload Button
+    local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
+    reloadBtn:SetSize(160, 30)
+    reloadBtn:SetPoint("TOPLEFT", cb2, "BOTTOMLEFT", 0, -30)
+    reloadBtn:SetText("Apply and Reload UI")
+    reloadBtn:SetScript("OnClick", function()
+        ReloadUI()
+    end)
+    
+    local warn = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    warn:SetPoint("TOPLEFT", reloadBtn, "BOTTOMLEFT", 0, -10)
+    warn:SetText("Note: Browser features (this window) will remain active\nregardless of these settings.")
+    warn:SetTextColor(0.6, 0.6, 0.6)
+    
     return f
 end
 
@@ -496,7 +563,7 @@ SLASH_EHTBROWSER1 = "/eht"
 SlashCmdList["EHTBROWSER"] = function(msg)
     if msg == "reset" then
         isDataDirty = true
-        print("|cff00ff00EHtweaks:|r Browser data cache cleared.")
+        print("|cff00ff00EHTweaks:|r Browser data cache cleared.")
         return
     end
     local f = CreateBrowserFrame()

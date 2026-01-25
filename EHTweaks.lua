@@ -1,5 +1,5 @@
 -- Author: Skulltrail
--- EHtweaks: Project Ebonhold Extensions
+-- EHTweaks: Project Ebonhold Extensions
 -- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links
 
 local addonName, addon = ...
@@ -9,6 +9,12 @@ local FILTER_MATCH_ALPHA = 1.0
 local FILTER_NOMATCH_ALPHA = 0.15
 local SEARCH_THROTTLE = 0.2
 
+-- --- Defaults ---
+local DEFAULTS = {
+    enableFilters = true,
+    enableChatLinks = true
+}
+
 -- --- State ---
 local searchTimer = 0
 local currentSearchText = ""
@@ -16,6 +22,43 @@ local currentEchoSearchText = ""
 local filterBox = nil
 local echoFilterBox = nil
 local matchedNodes = {} 
+
+-- --- Database Init ---
+local function InitializeDB()
+    if not EHTweaksDB then EHTweaksDB = {} end
+    for k, v in pairs(DEFAULTS) do
+        if EHTweaksDB[k] == nil then EHTweaksDB[k] = v end
+    end
+end
+
+-- --- Linking Helper ---
+
+-- Global helper for Browser.lua too
+function EHTweaks_HandleLinkClick(spellId)
+    if IsControlKeyDown() and IsAltKeyDown() and spellId then
+        local link = GetSpellLink(spellId)
+        
+        -- Fallback if GetSpellLink returns nil
+        if not link then
+            local name = GetSpellInfo(spellId)
+            if name then
+                link = "|cff71d5ff|Hspell:"..spellId.."|h["..name.."]|h|r"
+            end
+        end
+
+        if link then
+            local activeEditBox = ChatEdit_GetLastActiveWindow()
+            if activeEditBox:IsVisible() then
+                activeEditBox:Insert(link)
+            else
+                -- Force open chat
+                ChatFrame_OpenChat(link)
+            end
+            return true
+        end
+    end
+    return false
+end
 
 -- --- Visuals Helper ---
 
@@ -65,37 +108,8 @@ local function SetHighlight(btn, isMatch)
     end
 end
 
--- --- Linking Helper ---
-
-local function HandleLinkClick(spellId)
-    if IsControlKeyDown() and IsAltKeyDown() then
-        if spellId then
-            local link = GetSpellLink(spellId)
-            
-            if not link then
-                local name = GetSpellInfo(spellId)
-                if name then
-                    link = "|cff71d5ff|Hspell:"..spellId.."|h["..name.."]|h|r"
-                end
-            end
-
-            if link then
-                local activeEditBox = ChatEdit_GetLastActiveWindow()
-                if activeEditBox:IsVisible() then
-                    activeEditBox:Insert(link)
-                else
-                    ChatFrame_OpenChat(link)
-                end
-                return true
-            end
-        end
-        return true
-    end
-    return false
-end
-
 -- =========================================================
--- SECTION 1: SKILL TREE
+-- SECTION 1: SKILL TREE FILTER
 -- =========================================================
 
 local function FocusNode(nodeId)
@@ -181,7 +195,7 @@ local function CreateSkillFilterFrame()
     local parent = _G.skillTreeBottomBar
     if not parent then return end
 
-    local f = CreateFrame("Frame", "EHtweaks_FilterFrame", parent)
+    local f = CreateFrame("Frame", "EHTweaks_FilterFrame", parent)
     f:SetSize(200, 30)
     
     if _G.skillTreeApplyButton then
@@ -195,7 +209,7 @@ local function CreateSkillFilterFrame()
     f.label:SetText("Filter:")
     f.label:SetTextColor(1, 0.82, 0)
 
-    local eb = CreateFrame("EditBox", "EHtweaks_FilterBox", f, "InputBoxTemplate")
+    local eb = CreateFrame("EditBox", "EHTweaks_FilterBox", f, "InputBoxTemplate")
     eb:SetSize(120, 20)
     eb:SetPoint("LEFT", f.label, "RIGHT", 8, 0)
     eb:SetAutoFocus(false)
@@ -257,7 +271,7 @@ local function CreateSkillFilterFrame()
 end
 
 -- =========================================================
--- SECTION 2: ECHOES
+-- SECTION 2: ECHOES FILTER
 -- =========================================================
 
 local function GetPerkListSorted()
@@ -335,7 +349,7 @@ local function CreateEchoFilterFrame()
     local parent = _G.ProjectEbonholdEmpowermentFrame
     if not parent or echoFilterBox then return end
 
-    local f = CreateFrame("Frame", "EHtweaks_EchoFilterFrame", parent)
+    local f = CreateFrame("Frame", "EHTweaks_EchoFilterFrame", parent)
     f:SetSize(200, 30)
     f:SetPoint("BOTTOM", parent, "BOTTOM", 0, 15)
     f:SetFrameLevel(parent:GetFrameLevel() + 5)
@@ -345,7 +359,7 @@ local function CreateEchoFilterFrame()
     f.label:SetText("Filter:")
     f.label:SetTextColor(1, 0.82, 0)
 
-    local eb = CreateFrame("EditBox", "EHtweaks_EchoFilterBox", f, "InputBoxTemplate")
+    local eb = CreateFrame("EditBox", "EHTweaks_EchoFilterBox", f, "InputBoxTemplate")
     eb:SetSize(130, 20)
     eb:SetPoint("LEFT", f.label, "RIGHT", 8, 0)
     eb:SetAutoFocus(false)
@@ -386,6 +400,7 @@ end
 -- SECTION 3: HOOKS & WRAPPERS
 -- =========================================================
 
+-- Wrap a button's OnClick to allow "Link to Chat"
 local function SecureWrapper(btn, getSpellIdFunc)
     if not btn or btn.hasLinkWrapper then return end
     
@@ -393,7 +408,7 @@ local function SecureWrapper(btn, getSpellIdFunc)
     
     btn:SetScript("OnClick", function(self, button)
         local spellId = getSpellIdFunc(self)
-        if HandleLinkClick(spellId) then
+        if EHTweaks_HandleLinkClick(spellId) then
             return 
         end
         if original then
@@ -415,7 +430,6 @@ local function HookSkillTreeButtons()
                     if b.isMultipleChoice and b.selectedSpell and b.selectedSpell > 0 then
                         return b.spells[b.selectedSpell]
                     elseif #b.spells > 0 then
-                        -- For ranked nodes, link max rank to show potential
                         return b.spells[#b.spells]
                     end
                 end
@@ -439,7 +453,7 @@ local function HookEchoButtons()
             
             if not iconBtn.hasLinkWrapper then
                 iconBtn:SetScript("OnClick", function(self)
-                    HandleLinkClick(self.ehSpellId)
+                    EHTweaks_HandleLinkClick(self.ehSpellId)
                 end)
                 iconBtn.hasLinkWrapper = true
             end
@@ -455,19 +469,20 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
+        InitializeDB()
         
         -- 1. Setup Skill Tree
         if _G.skillTreeFrame then
             _G.skillTreeFrame:HookScript("OnShow", function()
-                if not filterBox then CreateSkillFilterFrame() end
-                HookSkillTreeButtons()
+                if EHTweaksDB.enableFilters and not filterBox then CreateSkillFilterFrame() end
+                if EHTweaksDB.enableChatLinks then HookSkillTreeButtons() end
             end)
         else
             C_Timer.After(1, function()
                 if _G.skillTreeFrame then
                     _G.skillTreeFrame:HookScript("OnShow", function()
-                        if not filterBox then CreateSkillFilterFrame() end
-                        HookSkillTreeButtons()
+                        if EHTweaksDB.enableFilters and not filterBox then CreateSkillFilterFrame() end
+                        if EHTweaksDB.enableChatLinks then HookSkillTreeButtons() end
                     end)
                 end
             end)
@@ -476,15 +491,17 @@ eventFrame:SetScript("OnEvent", function(self, event)
         -- 2. Setup Echoes
         if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateGrantedPerks then
             hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateGrantedPerks", function()
-                if not echoFilterBox then CreateEchoFilterFrame() end
-                
-                if currentEchoSearchText ~= "" then
-                    ApplyEchoFilter(currentEchoSearchText)
-                else
-                    ApplyEchoFilter("") 
+                if EHTweaksDB.enableFilters then
+                    if not echoFilterBox then CreateEchoFilterFrame() end
+                    
+                    if currentEchoSearchText ~= "" then
+                        ApplyEchoFilter(currentEchoSearchText)
+                    else
+                        ApplyEchoFilter("") 
+                    end
                 end
                 
-                HookEchoButtons()
+                if EHTweaksDB.enableChatLinks then HookEchoButtons() end
             end)
         end
         

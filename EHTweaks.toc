@@ -1,9 +1,10 @@
 ## Interface: 30300
-## Title: |ce5cc80ffEHTweaks|r |cffff5555[alpha.0.0.2]
-## Notes: Enhancements for Project Ebonhold elements
+## Title: |ce5cc80ffEHTweaks|r |cffff5555[alpha.0.0.3]
+## Notes: Enhancements for Project Ebonhold (Filter, Search, Visuals, Browser, etc.)
 ## Dependencies: ProjectEbonhold
+## SavedVariables: EHTweaksDB
 ## Author: Skulltrail
-## Version: alpha 0.0.2
+## Version: alpha 0.0.3
 
 EHtweaks.lua
 Browser.lua
