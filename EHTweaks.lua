@@ -1,6 +1,6 @@
 -- Author: Skulltrail
--- EHTweaks: Project Ebonhold Extensions
--- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom
+-- EHtweaks: Project Ebonhold Extensions
+-- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links
 
 local addonName, addon = ...
 
@@ -17,7 +17,7 @@ local filterBox = nil
 local echoFilterBox = nil
 local matchedNodes = {} 
 
--- --- Visuals Helper (Shared) ---
+-- --- Visuals Helper ---
 
 local function CreateGlow(btn)
     if btn.searchGlow then return end
@@ -65,8 +65,37 @@ local function SetHighlight(btn, isMatch)
     end
 end
 
+-- --- Linking Helper ---
+
+local function HandleLinkClick(spellId)
+    if IsControlKeyDown() and IsAltKeyDown() then
+        if spellId then
+            local link = GetSpellLink(spellId)
+            
+            if not link then
+                local name = GetSpellInfo(spellId)
+                if name then
+                    link = "|cff71d5ff|Hspell:"..spellId.."|h["..name.."]|h|r"
+                end
+            end
+
+            if link then
+                local activeEditBox = ChatEdit_GetLastActiveWindow()
+                if activeEditBox:IsVisible() then
+                    activeEditBox:Insert(link)
+                else
+                    ChatFrame_OpenChat(link)
+                end
+                return true
+            end
+        end
+        return true
+    end
+    return false
+end
+
 -- =========================================================
--- SECTION 1: SKILL TREE FILTER
+-- SECTION 1: SKILL TREE
 -- =========================================================
 
 local function FocusNode(nodeId)
@@ -152,7 +181,7 @@ local function CreateSkillFilterFrame()
     local parent = _G.skillTreeBottomBar
     if not parent then return end
 
-    local f = CreateFrame("Frame", "EHTweaks_FilterFrame", parent)
+    local f = CreateFrame("Frame", "EHtweaks_FilterFrame", parent)
     f:SetSize(200, 30)
     
     if _G.skillTreeApplyButton then
@@ -166,7 +195,7 @@ local function CreateSkillFilterFrame()
     f.label:SetText("Filter:")
     f.label:SetTextColor(1, 0.82, 0)
 
-    local eb = CreateFrame("EditBox", "EHTweaks_FilterBox", f, "InputBoxTemplate")
+    local eb = CreateFrame("EditBox", "EHtweaks_FilterBox", f, "InputBoxTemplate")
     eb:SetSize(120, 20)
     eb:SetPoint("LEFT", f.label, "RIGHT", 8, 0)
     eb:SetAutoFocus(false)
@@ -228,11 +257,9 @@ local function CreateSkillFilterFrame()
 end
 
 -- =========================================================
--- SECTION 2: ECHOES (EMPOWERMENT) FILTER
+-- SECTION 2: ECHOES
 -- =========================================================
 
--- Reconstructs the sorted list of perks exactly how Project Ebonhold does
--- so we can map visual buttons back to data.
 local function GetPerkListSorted()
     local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
     local perkList = {}
@@ -248,7 +275,6 @@ local function GetPerkListSorted()
                 primarySpellId = instance.spellId
             end
         end
-        
         if not primarySpellId and instances[1] then primarySpellId = instances[1].spellId end
 
         table.insert(perkList, {
@@ -277,15 +303,15 @@ local function ApplyEchoFilter(text)
         local data = list[i]
         
         if data then
+            iconBtn.ehSpellId = data.spellId 
+            
             local isMatch = false
             if searchText == "" then
                 isMatch = true
             else
-                -- 1. Name
                 if string.find(string.lower(data.spellName), searchText, 1, true) then
                     isMatch = true
                 else
-                    -- 2. Description
                     if utils and utils.GetSpellDescription then
                         local desc = utils.GetSpellDescription(data.spellId, 999, 1)
                         if desc and string.find(string.lower(desc), searchText, 1, true) then
@@ -295,9 +321,7 @@ local function ApplyEchoFilter(text)
                 end
             end
 
-            -- Reuse the glow/fade logic
             if searchText == "" then
-                -- Reset to normal
                 iconBtn:SetAlpha(1.0)
                 if iconBtn.searchGlow then iconBtn.searchGlow:Hide() end
             else
@@ -311,10 +335,8 @@ local function CreateEchoFilterFrame()
     local parent = _G.ProjectEbonholdEmpowermentFrame
     if not parent or echoFilterBox then return end
 
-    -- Container
-    local f = CreateFrame("Frame", "EHTweaks_EchoFilterFrame", parent)
+    local f = CreateFrame("Frame", "EHtweaks_EchoFilterFrame", parent)
     f:SetSize(200, 30)
-    -- Place at bottom of the frame
     f:SetPoint("BOTTOM", parent, "BOTTOM", 0, 15)
     f:SetFrameLevel(parent:GetFrameLevel() + 5)
 
@@ -323,13 +345,12 @@ local function CreateEchoFilterFrame()
     f.label:SetText("Filter:")
     f.label:SetTextColor(1, 0.82, 0)
 
-    local eb = CreateFrame("EditBox", "EHTweaks_EchoFilterBox", f, "InputBoxTemplate")
+    local eb = CreateFrame("EditBox", "EHtweaks_EchoFilterBox", f, "InputBoxTemplate")
     eb:SetSize(130, 20)
     eb:SetPoint("LEFT", f.label, "RIGHT", 8, 0)
     eb:SetAutoFocus(false)
     eb:SetMaxLetters(50)
 
-    -- Clear Button
     local clearBtn = CreateFrame("Button", nil, eb)
     clearBtn:SetSize(14, 14)
     clearBtn:SetPoint("RIGHT", eb, "RIGHT", -4, 0)
@@ -348,14 +369,10 @@ local function CreateEchoFilterFrame()
         if self:GetText() == "" then ApplyEchoFilter("") end
     end)
 
-    eb:SetScript("OnEnterPressed", function(self)
-        self:ClearFocus()
-    end)
+    eb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
     eb:SetScript("OnTextChanged", function(self)
         local text = self:GetText()
-        -- Direct update for Echoes is fast enough usually, 
-        -- but reusing throttling variable style is safer
         if text ~= currentEchoSearchText then
             currentEchoSearchText = text
             ApplyEchoFilter(text)
@@ -363,6 +380,71 @@ local function CreateEchoFilterFrame()
     end)
 
     echoFilterBox = eb
+end
+
+-- =========================================================
+-- SECTION 3: HOOKS & WRAPPERS
+-- =========================================================
+
+local function SecureWrapper(btn, getSpellIdFunc)
+    if not btn or btn.hasLinkWrapper then return end
+    
+    local original = btn:GetScript("OnClick")
+    
+    btn:SetScript("OnClick", function(self, button)
+        local spellId = getSpellIdFunc(self)
+        if HandleLinkClick(spellId) then
+            return 
+        end
+        if original then
+            original(self, button)
+        end
+    end)
+    
+    btn.hasLinkWrapper = true
+end
+
+local function HookSkillTreeButtons()
+    if not TalentDatabase or not TalentDatabase[0] then return end
+    
+    for _, nodeData in ipairs(TalentDatabase[0].nodes) do
+        local btn = _G["skillTreeNode" .. nodeData.id]
+        if btn then
+            SecureWrapper(btn, function(b) 
+                if b.spells then
+                    if b.isMultipleChoice and b.selectedSpell and b.selectedSpell > 0 then
+                        return b.spells[b.selectedSpell]
+                    elseif #b.spells > 0 then
+                        -- For ranked nodes, link max rank to show potential
+                        return b.spells[#b.spells]
+                    end
+                end
+                return nil
+            end)
+        end
+    end
+end
+
+local function HookEchoButtons()
+    local frame = _G.ProjectEbonholdEmpowermentFrame
+    if not frame or not frame.perkIcons then return end
+    
+    local list = GetPerkListSorted()
+    
+    for i, iconBtn in ipairs(frame.perkIcons) do
+        if list[i] then
+            iconBtn.ehSpellId = list[i].spellId
+            
+            iconBtn:EnableMouse(true)
+            
+            if not iconBtn.hasLinkWrapper then
+                iconBtn:SetScript("OnClick", function(self)
+                    HandleLinkClick(self.ehSpellId)
+                end)
+                iconBtn.hasLinkWrapper = true
+            end
+        end
+    end
 end
 
 -- =========================================================
@@ -374,34 +456,35 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         
-        -- 1. Setup Skill Tree Filter
+        -- 1. Setup Skill Tree
         if _G.skillTreeFrame then
             _G.skillTreeFrame:HookScript("OnShow", function()
                 if not filterBox then CreateSkillFilterFrame() end
+                HookSkillTreeButtons()
             end)
         else
             C_Timer.After(1, function()
-                if _G.skillTreeFrame and not filterBox then
+                if _G.skillTreeFrame then
                     _G.skillTreeFrame:HookScript("OnShow", function()
                         if not filterBox then CreateSkillFilterFrame() end
+                        HookSkillTreeButtons()
                     end)
                 end
             end)
         end
         
-        -- 2. Setup Echoes Filter
-        -- Hook UpdateGrantedPerks to ensure we inject the UI when it's populated/refreshed
-        -- and to re-apply filters if the list changes while filtering.
+        -- 2. Setup Echoes
         if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateGrantedPerks then
             hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateGrantedPerks", function()
-                if not echoFilterBox then
-                    CreateEchoFilterFrame()
-                end
+                if not echoFilterBox then CreateEchoFilterFrame() end
                 
-                -- If there is active text, re-apply it after the UI rebuild
                 if currentEchoSearchText ~= "" then
                     ApplyEchoFilter(currentEchoSearchText)
+                else
+                    ApplyEchoFilter("") 
                 end
+                
+                HookEchoButtons()
             end)
         end
         

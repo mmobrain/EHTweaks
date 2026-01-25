@@ -33,6 +33,9 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 *   `/eht` - Open the Ebonhold Compendium (Browser).
 *   `/eht reset` - Wipes the internal browser cache (useful if the server updates the tree).
 
+## Other QOL
+*   `Ctrl+Alt+click` - Link Echo or Skill to chat.
+
 ## Installation
 
 1. Download the repository.

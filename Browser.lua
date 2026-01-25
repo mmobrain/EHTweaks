@@ -1,6 +1,6 @@
 -- Author: Skulltrail
--- EHTweaks: Skill & Perk Browser
--- Features: Tabs (Skills/Echoes), Merged Rank Descriptions, Search, Jump to Node
+-- EHtweaks: Skill & Perk Browser
+-- Features: Tabs (Skills/Echoes), Merged Rank Descriptions, Search, Jump to Node, Chat Links
 
 local addonName, addon = ...
 
@@ -25,12 +25,38 @@ local filteredData = {}
 local browserFrame = nil
 local isDataDirty = true
 
+-- --- Helper: Chat Link ---
+local function TryLinkToChat(spellId)
+    if IsControlKeyDown() and IsAltKeyDown() and spellId then
+        local link = GetSpellLink(spellId)
+        
+        -- Fallback if GetSpellLink returns nil (common for custom server spells)
+        if not link then
+            local name = GetSpellInfo(spellId)
+            if name then
+                link = "|cff71d5ff|Hspell:"..spellId.."|h["..name.."]|h|r"
+            end
+        end
+
+        if link then
+            local activeEditBox = ChatEdit_GetLastActiveWindow()
+            if activeEditBox:IsVisible() then
+                activeEditBox:Insert(link)
+            else
+                -- If no edit box is open, open one
+                ChatFrame_OpenChat(link)
+            end
+            return true
+        end
+    end
+    return false
+end
+
 -- --- Helper: Text Merging ---
 
 local function GetRichDescription(data)
     if not data then return "" end
 
-    -- CASE 1: PERK (Echo)
     if data.isPerk then
         if utils and utils.GetSpellDescription then
             return utils.GetSpellDescription(data.spellId, 999, data.stack)
@@ -38,7 +64,6 @@ local function GetRichDescription(data)
         return "No description available."
     end
 
-    -- CASE 2: TREE SKILL (Merged Ranks)
     local spellIds = data.ranks
     if not spellIds or #spellIds == 0 then return "" end
     
@@ -264,16 +289,16 @@ local function SetTab(id)
     activeTab = id
     isDataDirty = true
     PanelTemplates_SetTab(browserFrame, id)
-    PanelTemplates_UpdateTabs(browserFrame) -- Updates visual state
+    PanelTemplates_UpdateTabs(browserFrame)
     browserFrame.searchBox:SetText("") 
     UpdateScroll()
 end
 
 local function CreateBrowserFrame()
     if browserFrame then return browserFrame end
-       
-    local f = CreateFrame("Frame", "EHTweaks_BrowserFrame", UIParent)
-    f:SetSize(400, 520) 
+    
+    local f = CreateFrame("Frame", "EHtweaks_BrowserFrame", UIParent)
+    f:SetSize(400, 520)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -298,14 +323,11 @@ local function CreateBrowserFrame()
     
     -- TABS
     f.numTabs = 2
-    
     local tab1 = CreateFrame("Button", "$parentTab1", f, "CharacterFrameTabButtonTemplate")
     tab1:SetID(1)
     tab1:SetText("Skill Tree")
-    tab1:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, -28) -- Adjusted offset
+    tab1:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, -28)
     tab1:SetScript("OnClick", function() SetTab(1) end)
-    
-    
     PanelTemplates_TabResize(tab1, 0)
     
     local tab2 = CreateFrame("Button", "$parentTab2", f, "CharacterFrameTabButtonTemplate")
@@ -313,8 +335,6 @@ local function CreateBrowserFrame()
     tab2:SetText("My Echoes")
     tab2:SetPoint("LEFT", tab1, "RIGHT", -16, 0)
     tab2:SetScript("OnClick", function() SetTab(2) end)
-    
-    
     PanelTemplates_TabResize(tab2, 0)
     
     PanelTemplates_SetNumTabs(f, 2)
@@ -337,7 +357,7 @@ local function CreateBrowserFrame()
     sbLabel:SetText("Filter (Name/Desc):")
     
     -- Scroll Frame
-    local sf = CreateFrame("ScrollFrame", "EHTweaks_BrowserScroll", f, "FauxScrollFrameTemplate")
+    local sf = CreateFrame("ScrollFrame", "EHtweaks_BrowserScroll", f, "FauxScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", 10, -70)
     sf:SetPoint("BOTTOMRIGHT", -30, 30)
     sf:SetScript("OnVerticalScroll", function(self, offset)
@@ -376,6 +396,8 @@ local function CreateBrowserFrame()
         cost:SetPoint("RIGHT", -10, 0)
         row.cost = cost
         
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        
         row:SetScript("OnEnter", function(self)
             if not self.data then return end
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -399,17 +421,25 @@ local function CreateBrowserFrame()
             end
             
             GameTooltip:AddLine(" ")
+            
             if self.data.isPerk then
                 GameTooltip:AddLine("Current Stack: " .. self.data.stack, 1, 1, 1)
             else
                 GameTooltip:AddLine("Click to view in Skill Tree", 0, 1, 0)
             end
             
+            GameTooltip:AddLine("Ctrl+Alt+Click to Link", 0.6, 0.6, 0.6)
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
         
         row:SetScript("OnClick", function(self)
+            if not self.data then return end
+            
+            -- Chat Link Logic (Universal)
+            if TryLinkToChat(self.data.spellId) then return end
+            
+            -- Normal Click Logic (Go To)
             if self.data.isPerk then return end
             
             if _G.skillTreeFrame then _G.skillTreeFrame:Show() end
@@ -423,7 +453,6 @@ local function CreateBrowserFrame()
                     local v = math.abs(yOfs) - (scroll:GetHeight()/2)
                     scroll:SetHorizontalScroll(math.max(0, h))
                     scroll:SetVerticalScroll(math.max(0, v))
-                    
                     
                     if not btn.browserGlow then
                         local glow = btn:CreateTexture(nil, "OVERLAY")
@@ -467,7 +496,7 @@ SLASH_EHTBROWSER1 = "/eht"
 SlashCmdList["EHTBROWSER"] = function(msg)
     if msg == "reset" then
         isDataDirty = true
-        print("|cff00ff00EHTweaks:|r Browser data cache cleared.")
+        print("|cff00ff00EHtweaks:|r Browser data cache cleared.")
         return
     end
     local f = CreateBrowserFrame()
