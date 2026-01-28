@@ -1,13 +1,16 @@
 -- Author: Skulltrail
 -- EHTweaks: Skill & Perk Browser
--- Features: Tabs (Skills/Echoes/Settings), Merged Rank Descriptions, Search, Jump to Node, Chat Links
+-- Features: Tabs (Skills/My Echoes/Echoes DB/Settings/Import), Merged Rank Descriptions, Search, Jump to Node, Chat Links
 
 local addonName, addon = ...
+local LibDeflate = LibStub:GetLibrary("LibDeflate")
+
 
 -- --- Configuration ---
 local ROW_HEIGHT = 44
 local MAX_ROWS = 10
 local BROWSER_TITLE = "Ebonhold Compendium"
+local EXPORT_HEADER = "!EHT1!"
 
 -- Quality Colors
 local QUALITY_COLORS = {
@@ -19,7 +22,7 @@ local QUALITY_COLORS = {
 }
 
 -- --- Data State ---
-local activeTab = 1 -- 1: Skills, 2: Echoes, 3: Settings
+local activeTab = 1 -- 1: Skills, 2: My Echoes, 3: Echoes DB, 4: Settings, 5: Import/Export
 local browserData = {}
 local filteredData = {}
 local browserFrame = nil
@@ -32,7 +35,7 @@ local function GetRichDescription(data)
 
     if data.isPerk then
         if utils and utils.GetSpellDescription then
-            return utils.GetSpellDescription(data.spellId, 999, data.stack)
+            return utils.GetSpellDescription(data.spellId, 999, data.stack or 1)
         end
         return "No description available."
     end
@@ -151,17 +154,37 @@ local function BuildPerkData()
         local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
         if granted then
             for spellName, instances in pairs(granted) do
-                local info = instances[1]
-                if info then
-                    local _, _, icon = GetSpellInfo(info.spellId)
-                    table.insert(data, {
-                        isPerk = true,
-                        name = spellName,
-                        icon = icon,
-                        spellId = info.spellId,
-                        stack = info.stack,
-                        quality = info.quality or 0
-                    })
+                if instances and #instances > 0 then
+                    -- Sum all stacks and find highest quality
+                    local totalStack = 0
+                    local highestQuality = 0
+                    local primarySpellId = nil
+                    local icon = nil
+                    
+                    for _, info in ipairs(instances) do
+                        totalStack = totalStack + (info.stack or 1)
+                        
+                        if (info.quality or 0) > highestQuality then
+                            highestQuality = info.quality or 0
+                            primarySpellId = info.spellId
+                        end
+                        
+                        if not primarySpellId then
+                            primarySpellId = info.spellId
+                        end
+                    end
+                    
+                    if primarySpellId then
+                        local _, _, iconTex = GetSpellInfo(primarySpellId)
+                        table.insert(data, {
+                            isPerk = true,
+                            name = spellName,
+                            icon = iconTex,
+                            spellId = primarySpellId,
+                            stack = totalStack,
+                            quality = highestQuality
+                        })
+                    end
                 end
             end
         end
@@ -173,11 +196,63 @@ local function BuildPerkData()
     return data
 end
 
+
+local function BuildHistoryData()
+    local data = {}
+    local groups = {} -- name -> { highestQ, qualities = {q -> id}, icon }
+
+    if EHTweaksDB and EHTweaksDB.seenEchoes then
+        for spellId, info in pairs(EHTweaksDB.seenEchoes) do
+            local name = info.name
+            if name then
+                if not groups[name] then
+                    groups[name] = {
+                        highestQ = -1,
+                        qualities = {}, -- [quality] = spellId
+                        icon = info.icon,
+                        name = name
+                    }
+                end
+                
+                local q = math.abs(info.quality or 0)
+                groups[name].qualities[q] = spellId
+                
+                if q > groups[name].highestQ then
+                    groups[name].highestQ = q
+                    groups[name].icon = info.icon
+                end
+            end
+        end
+    end
+    
+    for name, group in pairs(groups) do
+        table.insert(data, {
+            isPerk = true,
+            isHistory = true,
+            name = name,
+            icon = group.icon,
+            spellId = group.qualities[group.highestQ], -- Use highest quality ID for main display/tooltip
+            quality = group.highestQ,
+            qualityMap = group.qualities -- For pips
+        })
+    end
+
+    table.sort(data, function(a, b) 
+        if a.quality ~= b.quality then return a.quality > b.quality end
+        return a.name < b.name 
+    end)
+    return data
+end
+
 local function RefreshData()
     if activeTab == 1 then
         browserData = BuildTreeData()
-    else
+    elseif activeTab == 2 then
         browserData = BuildPerkData()
+    elseif activeTab == 3 then
+        browserData = BuildHistoryData()
+    else
+        browserData = {}
     end
     
     local text = (browserFrame and browserFrame.searchBox and browserFrame.searchBox:GetText()) or ""
@@ -198,7 +273,135 @@ local function RefreshData()
         end
         filteredData = res
     end
+    
+    -- --- Update Tab Counts ---
+    if browserFrame and browserFrame.tabs then
+        local treeC = #BuildTreeData()
+        local myC = #BuildPerkData()
+        local dbC = #BuildHistoryData()
+        
+        browserFrame.tabs[1]:SetText("Skill Tree (" .. treeC .. ")")
+        browserFrame.tabs[2]:SetText("My Echoes (" .. myC .. ")")
+        browserFrame.tabs[3]:SetText("Echoes DB (" .. dbC .. ")")
+        
+        PanelTemplates_TabResize(browserFrame.tabs[1], 0)
+        PanelTemplates_TabResize(browserFrame.tabs[2], 0)
+        PanelTemplates_TabResize(browserFrame.tabs[3], 0)
+    end
+    
     isDataDirty = false
+end
+
+-- --- IMPORT / EXPORT LOGIC (LibDeflate) ---
+
+-- Format: { [1]={id=123,q=1}, [2]={id=456,q=0}, ... } -> Serialized -> Compressed -> Encoded
+function EHTweaks_ExportEchoes()
+    if not EHTweaksDB.seenEchoes then 
+        EHTweaks_Log("Export: No seenEchoes DB found.")
+        return "" 
+    end
+    if not LibDeflate then return "Error: LibDeflate missing" end
+    
+    local exportTable = {}
+    local count = 0
+    
+    -- Gather data into a simple array
+    EHTweaks_Log("--- Exporting Echoes ---")
+    for spellId, info in pairs(EHTweaksDB.seenEchoes) do        
+        local quality = math.abs(info.quality or 0)
+        
+        table.insert(exportTable, { spellId, quality }) 
+        EHTweaks_Log(string.format("Pack: ID=%d, Q=%d, Name=%s", spellId, quality, tostring(info.name)))
+        count = count + 1
+    end
+    EHTweaks_Log("Total items to export: " .. count)
+    
+    -- Manual Serialization (simple string concat for 3.3.5 stability vs AceSerializer)
+    -- Format: id:q,id:q,id:q
+    local parts = {}
+    for _, entry in ipairs(exportTable) do
+        table.insert(parts, entry[1] .. ":" .. entry[2])
+    end
+    local rawString = table.concat(parts, ",")
+    
+    -- Compress
+    local compressed = LibDeflate:CompressDeflate(rawString)
+    -- Encode
+    local encoded = LibDeflate:EncodeForPrint(compressed)
+    
+    return EXPORT_HEADER .. encoded
+end
+
+function EHTweaks_ImportEchoes(code)
+    if not LibDeflate then return 0, "LibDeflate Missing" end
+    
+    EHTweaks_Log("--- Importing Echoes ---")
+    
+    -- Strip header
+    if string.sub(code, 1, string.len(EXPORT_HEADER)) == EXPORT_HEADER then
+        code = string.sub(code, string.len(EXPORT_HEADER) + 1)
+    end
+    
+    -- Decode
+    local compressed = LibDeflate:DecodeForPrint(code)
+    if not compressed then 
+        EHTweaks_Log("Import Error: Invalid Encoding (DecodeForPrint failed)")
+        return 0, "Invalid Encoding" 
+    end
+    
+    -- Decompress
+    local rawString = LibDeflate:DecompressDeflate(compressed)
+    if not rawString then 
+        EHTweaks_Log("Import Error: Decompression Failed")
+        return 0, "Decompression Failed" 
+    end
+    
+    EHTweaks_Log("Raw String Length: " .. string.len(rawString))
+    
+    -- Deserialize (simple split)
+    local imported = 0
+    if not EHTweaksDB.seenEchoes then EHTweaksDB.seenEchoes = {} end
+    
+    for entryStr in string.gmatch(rawString, "([^,]+)") do
+        -- FIX: Regex updated to accept optional negative sign (-?%d+) to handle legacy -0 imports
+        local idStr, qStr = string.match(entryStr, "(%d+):(-?%d+)")
+        if idStr and qStr then
+            local spellId = tonumber(idStr)
+            local quality = tonumber(qStr)
+            quality = math.abs(quality) -- Normalize just in case
+            
+            -- Validate Spell Exists locally
+            local name, _, icon = GetSpellInfo(spellId)
+            if name then
+                if not EHTweaksDB.seenEchoes[spellId] then
+                    EHTweaksDB.seenEchoes[spellId] = {
+                        name = name,
+                        icon = icon,
+                        quality = quality
+                    }
+                    imported = imported + 1
+                    EHTweaks_Log("Imported NEW: " .. name .. " (" .. spellId .. ") Q=" .. quality)
+                else
+                    -- Merge strategy: Keep highest quality
+                    local oldQ = math.abs(EHTweaksDB.seenEchoes[spellId].quality or 0)
+                    if quality > oldQ then
+                        EHTweaksDB.seenEchoes[spellId].quality = quality
+                        imported = imported + 1 -- Count quality upgrade as import
+                        EHTweaks_Log("Imported UPGRADE: " .. name .. " (" .. spellId .. ") Q=" .. oldQ .. "->" .. quality)
+                    else
+                        -- EHTweaks_Log("Skipped (Existing Better/Equal): " .. name .. " (" .. spellId .. ")")
+                    end
+                end
+            else
+                EHTweaks_Log("Skipped (Unknown SpellID): " .. spellId)
+            end
+        else
+            EHTweaks_Log("Skipped (Malformed Entry): " .. tostring(entryStr))
+        end
+    end
+    
+    EHTweaks_Log("Import Finished. Total processed: " .. imported)
+    return imported
 end
 
 -- --- UI Logic ---
@@ -206,7 +409,7 @@ end
 local function UpdateScroll()
     if not browserFrame then return end 
 
-    if activeTab == 3 then
+    if activeTab >= 4 then -- Settings or Import/Export
         -- Hide List UI components
         if browserFrame.scroll then browserFrame.scroll:Hide() end
         if browserFrame.searchBox then browserFrame.searchBox:Hide() end
@@ -219,15 +422,23 @@ local function UpdateScroll()
             end
         end
         
-        -- Show Settings
-        if browserFrame.settingsFrame then browserFrame.settingsFrame:Show() end
+        -- Toggle Frames
+        if activeTab == 4 then
+            if browserFrame.settingsFrame then browserFrame.settingsFrame:Show() end
+            if browserFrame.importFrame then browserFrame.importFrame:Hide() end
+        else
+            if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
+            if browserFrame.importFrame then browserFrame.importFrame:Show() end
+        end
         return
     else
         -- Show List UI
         if browserFrame.scroll then browserFrame.scroll:Show() end
         if browserFrame.searchBox then browserFrame.searchBox:Show() end
         if browserFrame.searchLabel then browserFrame.searchLabel:Show() end
+        
         if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
+        if browserFrame.importFrame then browserFrame.importFrame:Hide() end
     end
 
     if isDataDirty then RefreshData() end
@@ -250,9 +461,29 @@ local function UpdateScroll()
                 local color = QUALITY_COLORS[data.quality] or QUALITY_COLORS[0]
                 row.name:SetText(data.name)
                 row.name:SetTextColor(color.r, color.g, color.b)
-                row.cost:SetText("Stack: " .. data.stack)
-                row.typeText:SetText(color.name)
-                row.typeText:SetTextColor(color.r, color.g, color.b)
+                
+                if data.isHistory then
+                    -- Render C U R E L pips
+                    local pips = ""
+                    local map = data.qualityMap or {}
+                    
+                    if map[0] then pips = pips .. "|cffffffffC|r " else pips = pips .. "|cff555555C|r " end
+                    if map[1] then pips = pips .. "|cff1eff00U|r " else pips = pips .. "|cff555555U|r " end
+                    if map[2] then pips = pips .. "|cff0070ddR|r " else pips = pips .. "|cff555555R|r " end
+                    if map[3] then pips = pips .. "|cffa335eeE|r " else pips = pips .. "|cff555555E|r " end
+                    if map[4] then pips = pips .. "|cffff8000L|r"  else pips = pips .. "|cff555555L|r"  end
+                    
+                    row.cost:SetText(pips)
+                    
+                    -- Type text is Rarity Name (e.g. "Rare") based on highest discovered
+                    local hName = QUALITY_COLORS[data.quality] and QUALITY_COLORS[data.quality].name or "Unknown"
+                    row.typeText:SetText(hName)
+                    row.typeText:SetTextColor(color.r, color.g, color.b)
+                else
+                    row.cost:SetText("Stack: " .. (data.stack or 1))
+                    row.typeText:SetText(color.name)
+                    row.typeText:SetTextColor(color.r, color.g, color.b)
+                end
             else
                 row.name:SetText(data.name)
                 row.name:SetTextColor(1, 1, 1)
@@ -299,7 +530,7 @@ local function CreateBrowserFrame()
     if browserFrame then return browserFrame end
     
     local f = CreateFrame("Frame", "EHTweaks_BrowserFrame", UIParent)
-    f:SetSize(400, 520)
+    f:SetSize(464, 520)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -309,11 +540,12 @@ local function CreateBrowserFrame()
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     
     f:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 8, right = 8, top = 8, bottom = 8 }
+            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",            
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 32,
+            insets = {left = 8, right = 8, top = 8, bottom = 8},
     })
+    f:SetBackdropColor(0, 0, 0, 1)
     
     browserFrame = f
     
@@ -325,14 +557,16 @@ local function CreateBrowserFrame()
     close:SetPoint("TOPRIGHT", -5, -5)
     
     -- TABS
-    f.numTabs = 3
+    f.numTabs = 5
+    f.tabs = {}
     
     local tab1 = CreateFrame("Button", "$parentTab1", f, "CharacterFrameTabButtonTemplate")
     tab1:SetID(1)
     tab1:SetText("Skill Tree")
-    tab1:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, -28)
+    tab1:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, -28)
     tab1:SetScript("OnClick", function() SetTab(1) end)
     PanelTemplates_TabResize(tab1, 0)
+    f.tabs[1] = tab1
     
     local tab2 = CreateFrame("Button", "$parentTab2", f, "CharacterFrameTabButtonTemplate")
     tab2:SetID(2)
@@ -340,15 +574,33 @@ local function CreateBrowserFrame()
     tab2:SetPoint("LEFT", tab1, "RIGHT", -16, 0)
     tab2:SetScript("OnClick", function() SetTab(2) end)
     PanelTemplates_TabResize(tab2, 0)
+    f.tabs[2] = tab2
     
     local tab3 = CreateFrame("Button", "$parentTab3", f, "CharacterFrameTabButtonTemplate")
     tab3:SetID(3)
-    tab3:SetText("Settings")
+    tab3:SetText("Echoes DB")
     tab3:SetPoint("LEFT", tab2, "RIGHT", -16, 0)
     tab3:SetScript("OnClick", function() SetTab(3) end)
     PanelTemplates_TabResize(tab3, 0)
+    f.tabs[3] = tab3
     
-    PanelTemplates_SetNumTabs(f, 3)
+    local tab4 = CreateFrame("Button", "$parentTab4", f, "CharacterFrameTabButtonTemplate")
+    tab4:SetID(4)
+    tab4:SetText("Settings")
+    tab4:SetPoint("LEFT", tab3, "RIGHT", -16, 0)
+    tab4:SetScript("OnClick", function() SetTab(4) end)
+    PanelTemplates_TabResize(tab4, 0)
+    f.tabs[4] = tab4
+    
+    local tab5 = CreateFrame("Button", "$parentTab5", f, "CharacterFrameTabButtonTemplate")
+    tab5:SetID(5)
+    tab5:SetText("Import/Export")
+    tab5:SetPoint("LEFT", tab4, "RIGHT", -16, 0)
+    tab5:SetScript("OnClick", function() SetTab(5) end)
+    PanelTemplates_TabResize(tab5, 0)
+    f.tabs[5] = tab5
+    
+    PanelTemplates_SetNumTabs(f, 5)
     PanelTemplates_SetTab(f, 1)
     PanelTemplates_UpdateTabs(f)
     
@@ -396,7 +648,7 @@ local function CreateBrowserFrame()
     f.rows = {}
     for i = 1, MAX_ROWS do
         local row = CreateFrame("Button", nil, f)
-        row:SetSize(360, ROW_HEIGHT)
+        row:SetSize(424, ROW_HEIGHT)
         row:SetPoint("TOPLEFT", 15, -70 - (i-1)*ROW_HEIGHT)
         
         local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -429,26 +681,51 @@ local function CreateBrowserFrame()
             GameTooltip:ClearLines()
             
             if self.data.isPerk then
-                local c = QUALITY_COLORS[self.data.quality]
-                GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
+                -- Smart Multi-Quality Tooltip Logic
+                if self.data.isHistory and self.data.qualityMap then
+                    local color = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
+                    GameTooltip:AddLine(self.data.name, color.r, color.g, color.b)
+                    GameTooltip:AddLine(" ")
+                    
+                    -- Loop all possible qualities
+                    for q = 0, 4 do
+                        local sID = self.data.qualityMap[q]
+                        if sID then
+                            local qColor = QUALITY_COLORS[q]
+                            local qName = qColor.name or "Unknown"
+                            
+                            -- Get detailed description
+                            local desc = utils.GetSpellDescription(sID, 999, 1)
+                            
+                            -- Add Header (e.g., "Rare")
+                            GameTooltip:AddLine(qName, qColor.r, qColor.g, qColor.b)
+                            -- Add Description (White/Gold)
+                            GameTooltip:AddLine(desc, 1, 0.82, 0, true)
+                            GameTooltip:AddLine(" ")
+                        end
+                    end
+                else
+                    -- Fallback/Standard logic for My Echoes
+                    local c = QUALITY_COLORS[self.data.quality]
+                    GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
+                    
+                    local desc = GetRichDescription(self.data)
+                    if desc then
+                        GameTooltip:AddLine(desc, 1, 0.82, 0, true)
+                    end
+                    
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Current Stack: " .. self.data.stack, 1, 1, 1)
+                end
             else
+                -- Skill Tree Nodes
                 GameTooltip:AddLine(self.data.name, 1, 1, 1)
-            end
-            
-            local desc = GetRichDescription(self.data)
-            if desc then
-                GameTooltip:AddLine(desc, 1, 0.82, 0, true)
-            else
                 for i, spellId in ipairs(self.data.ranks or {}) do
                     local d = utils.GetSpellDescription(spellId, 999, 1)
                     GameTooltip:AddLine("Rank " .. i .. ": " .. d, 0.8, 0.8, 0.8, true)
                 end
-            end
-            
-            GameTooltip:AddLine(" ")
-            if self.data.isPerk then
-                GameTooltip:AddLine("Current Stack: " .. self.data.stack, 1, 1, 1)
-            else
+                
+                GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("Click to view in Skill Tree", 0, 1, 0)
             end
             
@@ -531,7 +808,7 @@ local function CreateBrowserFrame()
     -- Init state
     if EHTweaksDB then cb1:SetChecked(EHTweaksDB.enableFilters) end
     
-    local cb2 = CreateFrame("CheckButton", "EHTweaks_CB_Links", settings, "UICheckButtonTemplate")
+     local cb2 = CreateFrame("CheckButton", "EHTweaks_CB_Links", settings, "UICheckButtonTemplate")
     cb2:SetPoint("TOPLEFT", cb1, "BOTTOMLEFT", 0, -10)
     _G[cb2:GetName().."Text"]:SetText("Enhance Project Ebonhold with Chat Links")
     cb2:SetScript("OnClick", function(self)
@@ -539,13 +816,27 @@ local function CreateBrowserFrame()
             EHTweaksDB.enableChatLinks = self:GetChecked() and true or false
         end
     end)
-    -- Init state
     if EHTweaksDB then cb2:SetChecked(EHTweaksDB.enableChatLinks) end
+
+    -- Objective Tracker Checkbox
+    local cb3 = CreateFrame("CheckButton", "EHTweaks_CB_Tracker", settings, "UICheckButtonTemplate")
+    cb3:SetPoint("TOPLEFT", cb2, "BOTTOMLEFT", 0, -10)
+    _G[cb3:GetName().."Text"]:SetText("Enhance Project Ebonhold with Objective Tracker")
+    cb3:SetScript("OnClick", function(self)
+        if EHTweaksDB then
+            EHTweaksDB.enableTracker = self:GetChecked() and true or false
+            -- Immediately update visibility
+            if _G.ProjectEbonhold and _G.ProjectEbonhold.ObjectivesService then
+                 UpdateEHObjectiveDisplay(_G.ProjectEbonhold.ObjectivesService.GetActiveObjective())
+            end
+        end
+    end)
+    if EHTweaksDB then cb3:SetChecked(EHTweaksDB.enableTracker) end
     
     -- Apply & Reload Button
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
-    reloadBtn:SetPoint("TOPLEFT", cb2, "BOTTOMLEFT", 0, -30)
+    reloadBtn:SetPoint("TOPLEFT", cb3, "BOTTOMLEFT", 0, -30)
     reloadBtn:SetText("Apply and Reload UI")
     reloadBtn:SetScript("OnClick", function()
         ReloadUI()
@@ -555,6 +846,169 @@ local function CreateBrowserFrame()
     warn:SetPoint("TOPLEFT", reloadBtn, "BOTTOMLEFT", 0, -10)
     warn:SetText("Note: Browser features (this window) will remain active\nregardless of these settings.")
     warn:SetTextColor(0.6, 0.6, 0.6)
+    
+    -- IMPORT / EXPORT FRAME
+    local import = CreateFrame("Frame", nil, f)
+    import:SetAllPoints(f)
+    import:Hide()
+    f.importFrame = import
+    
+    local iTitle = import:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    iTitle:SetPoint("TOPLEFT", 20, -50)
+    iTitle:SetText("Import / Export")
+    
+    local h1 = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    h1:SetPoint("TOPLEFT", iTitle, "BOTTOMLEFT", 0, -20)
+    h1:SetText("Share your Echoes DB with others.")    
+    
+    local exportBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
+    exportBtn:SetSize(160, 30)
+    exportBtn:SetPoint("TOPLEFT", h1, "BOTTOMLEFT", 0, -10)
+    exportBtn:SetText("Export Echoes")
+    exportBtn:SetScript("OnClick", function()
+    -- Ensure DB is current before export
+    if ProjectEbonhold and ProjectEbonhold.PerkService then
+        local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
+        if granted then
+            for spellName, instances in pairs(granted) do
+                for _, info in ipairs(instances) do
+                    if EHTweaks_RecordEchoInfo then
+                        EHTweaks_RecordEchoInfo(info.spellId, info.quality)
+                    end
+                end
+            end
+        end
+    end
+    
+    StaticPopupDialogs["EHTWEAKS_EXPORT"] = {
+        text = "Echoes DB Export String:\\n(Ctrl+C to copy)",
+        button1 = "Close",
+        hasEditBox = true,
+        maxLetters = 999999,
+        editBoxWidth = 350,
+        OnShow = function(self)
+            local str = EHTweaks_ExportEchoes()
+            self.editBox:SetText(str)
+            self.editBox:HighlightText()
+            self.editBox:SetFocus()
+        end,
+        EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+        timeout = 0, whileDead = true, hideOnEscape = true
+    }
+    StaticPopup_Show("EHTWEAKS_EXPORT")
+end)
+
+      
+    
+    -- Anchor to exportBtn instead of div to maintain left alignment
+	local h2 = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	h2:SetPoint("TOPLEFT", exportBtn, "BOTTOMLEFT", 0, -30)
+	h2:SetText("Import Echoes DB from another player.")
+	h2:SetWidth(360)
+	h2:SetJustifyH("LEFT")
+
+	local importBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
+	importBtn:SetSize(160, 30)
+	importBtn:SetPoint("TOPLEFT", h2, "BOTTOMLEFT", 0, -10)
+	importBtn:SetText("Import Echoes")
+
+
+    importBtn:SetScript("OnClick", function()
+        StaticPopupDialogs["EHTWEAKS_IMPORT"] = {
+            text = "Paste Export String here:\n(Ctrl+V. Imports are merged)",
+            button1 = "Import",
+            button2 = "Cancel",
+            hasEditBox = true,
+            maxLetters = 999999,
+            editBoxWidth = 350,
+            OnAccept = function(self)
+                local code = self.editBox:GetText()
+                local count, err = EHTweaks_ImportEchoes(code)
+                if count > 0 then
+                    print("|cff00ff00EHTweaks:|r Successfully imported " .. count .. " new/upgraded Echoes.")
+                    RefreshData() -- Refresh list immediately if open
+                else
+                    print("|cffff0000EHTweaks:|r Import failed: " .. (err or "No new data found."))
+                end
+            end,
+            EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+            timeout = 0, whileDead = true, hideOnEscape = true
+        }
+        StaticPopup_Show("EHTWEAKS_IMPORT")
+    end)
+    
+    
+    -- Starter DB Controls (Manual)
+    if _G.ETHTweaks_OptionalDB_Data then
+        local starterHeader = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        starterHeader:SetPoint("TOPLEFT", separator, "BOTTOMLEFT", 0, -10)
+        starterHeader:SetText("Starter Database Controls")
+        
+        local mergeStarterBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
+        mergeStarterBtn:SetSize(160, 25)
+        mergeStarterBtn:SetPoint("TOPLEFT", starterHeader, "BOTTOMLEFT", 0, -10)
+        mergeStarterBtn:SetText("Merge Starter DB")
+        mergeStarterBtn:SetScript("OnClick", function()
+            local starter = _G.ETHTweaks_OptionalDB_Data
+            if starter and starter.data then
+                local count, err = EHTweaks_ImportEchoes(starter.data)
+                if count > 0 then
+                    print("|cff00ff00EHTweaks:|r Merged Starter DB (" .. count .. " echoes added/updated).")
+                    RefreshData()
+                else
+                    print("|cffff0000EHTweaks:|r Merge failed: " .. (err or "Unknown"))
+                end
+            end
+        end)
+        
+        local overrideStarterBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
+        overrideStarterBtn:SetSize(180, 25)
+        overrideStarterBtn:SetPoint("LEFT", mergeStarterBtn, "RIGHT", 10, 0)
+        overrideStarterBtn:SetText("|cffff7f00Override with Starter DB|r")
+        overrideStarterBtn:SetScript("OnClick", function()
+            StaticPopupDialogs["EHTWEAKS_OVERRIDE"] = {
+                text = "|cffff0000WARNING:|r This will DELETE your current history and replace it with the Starter Database.\nAre you sure?",
+                button1 = "Yes, Override",
+                button2 = "Cancel",
+                OnAccept = function()
+                    EHTweaksDB.seenEchoes = {} -- Wipe first
+                    local starter = _G.ETHTweaks_OptionalDB_Data
+                    if starter and starter.data then
+                        local count, err = EHTweaks_ImportEchoes(starter.data)
+                        if count > 0 then
+                            print("|cff00ff00EHTweaks:|r Database overridden with Starter DB (" .. count .. " echoes).")
+                            RefreshData()
+                        else
+                            print("|cffff0000EHTweaks:|r Override failed: " .. (err or "Unknown"))
+                        end
+                    end
+                end,
+                timeout = 0, whileDead = true, hideOnEscape = true
+            }
+            StaticPopup_Show("EHTWEAKS_OVERRIDE")
+        end)
+    end
+    
+    -- Purge Button (Bottom Right)
+    local purgeBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
+    purgeBtn:SetSize(120, 25)
+    purgeBtn:SetPoint("BOTTOMRIGHT", -20, 20)
+    purgeBtn:SetText("Purge DB")
+    purgeBtn:SetScript("OnClick", function()
+        StaticPopupDialogs["EHTWEAKS_PURGE"] = {
+            text = "Are you sure you want to clear your Echoes History?\nThis cannot be undone.",
+            button1 = "Yes",
+            button2 = "No",
+            OnAccept = function()
+                EHTweaksDB.seenEchoes = {}
+                isDataDirty = true
+                print("|cff00ff00EHTweaks:|r Echoes DB cleared.")
+                if activeTab == 3 then RefreshData() UpdateScroll() end
+            end,
+            timeout = 0, whileDead = true, hideOnEscape = true
+        }
+        StaticPopup_Show("EHTWEAKS_PURGE")
+    end)
     
     return f
 end
