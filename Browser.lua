@@ -284,9 +284,7 @@ local function RefreshData()
         browserFrame.tabs[2]:SetText("My Echoes (" .. myC .. ")")
         browserFrame.tabs[3]:SetText("Echoes DB (" .. dbC .. ")")
         
-        PanelTemplates_TabResize(browserFrame.tabs[1], 0)
-        PanelTemplates_TabResize(browserFrame.tabs[2], 0)
-        PanelTemplates_TabResize(browserFrame.tabs[3], 0)
+        -- PanelTemplates_TabResize removed for custom tabs
     end
     
     isDataDirty = false
@@ -524,8 +522,15 @@ local function SetTab(id)
     activeTab = id
     isDataDirty = true
     if browserFrame then
-        PanelTemplates_SetTab(browserFrame, id)
-        PanelTemplates_UpdateTabs(browserFrame)
+        -- Manual Tab Switching Logic
+        for k, t in ipairs(browserFrame.tabs) do
+            if k == id then
+                 t.bg:SetVertexColor(0.3, 0.3, 0.3, 1)
+            else
+                 t.bg:SetVertexColor(0.15, 0.15, 0.15, 1)
+            end
+        end
+        
         if browserFrame.searchBox then browserFrame.searchBox:SetText("") end
     end
     UpdateScroll()
@@ -627,17 +632,8 @@ local function CreateBrowserFrame()
     tab5:SetPoint("LEFT", tab4, "RIGHT", 2, 0)
     f.tabs[5] = tab5
     
-    -- Hook SetTab to style nav buttons
-    hooksecurefunc("PanelTemplates_SetTab", function(frame, id)
-        if frame ~= f then return end
-        for k, t in ipairs(f.tabs) do
-             if k == id then
-                 t.bg:SetVertexColor(0.3, 0.3, 0.3, 1)
-             else
-                 t.bg:SetVertexColor(0.15, 0.15, 0.15, 1)
-             end
-        end
-    end)
+    -- Initialize Tab State
+    SetTab(1)
 
     -- Search
     local sb = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
