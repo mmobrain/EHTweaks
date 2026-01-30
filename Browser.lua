@@ -674,9 +674,8 @@ local function CreateBrowserFrame()
     local sf = CreateFrame("ScrollFrame", "EHTweaks_BrowserScroll", f, "FauxScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", 10, -70)
     sf:SetPoint("BOTTOMRIGHT", -30, 30)
-        if self.scroll then
-             FauxScrollFrame_OnVerticalScroll(self.scroll, offset, ROW_HEIGHT, UpdateScroll) 
-        end
+    sf:SetScript("OnVerticalScroll", function(self, offset)
+        FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, UpdateScroll)
     end)
     f.scroll = sf
     
