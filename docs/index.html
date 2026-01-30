@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PE-EHTweaks - Documentation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent-green: #3fb950;
+            --accent-blue: #58a6ff;
+            --accent-purple: #a371f7;
+            --accent-orange: #d29922;
+            --border-color: #30363d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #1a1f35 0%, #0d1117 50%, #162030 100%);
+            padding: 80px 20px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(ellipse at center top, rgba(88, 166, 255, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero .subtitle {
+            font-size: 1.3rem;
+            color: var(--text-secondary);
+            margin-bottom: 30px;
+        }
+
+        .badges {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .badge.version {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        .badge.wow {
+            border-color: var(--accent-orange);
+            color: var(--accent-orange);
+        }
+
+        .badge.platform {
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        .cta-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 28px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #2f81f7;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 60px 20px;
+        }
+
+        section {
+            margin-bottom: 60px;
+        }
+
+        h2 {
+            font-size: 2rem;
+            margin-bottom: 25px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h2::before {
+            content: '';
+            display: inline-block;
+            width: 4px;
+            height: 28px;
+            background: var(--accent-blue);
+            border-radius: 2px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+            transition: all 0.2s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-3px);
+        }
+
+        .feature-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: var(--accent-blue);
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .changelog {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+        }
+
+        .changelog h3 {
+            color: var(--accent-blue);
+            margin-bottom: 15px;
+        }
+
+        .changelog ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .changelog li {
+            padding: 8px 0;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .changelog li:last-child {
+            border-bottom: none;
+        }
+
+        .changelog li::before {
+            content: '✓';
+            color: var(--accent-green);
+            margin-right: 10px;
+        }
+
+        footer {
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        footer p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--accent-blue);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        .support-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .support-link {
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .support-link.patreon {
+            background: #ff424d;
+            color: white;
+        }
+
+        .support-link.paypal {
+            background: #0070ba;
+            color: white;
+        }
+
+        .support-link:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="hero">
+        <h1>PE-EHTweaks</h1>
+        <p class="subtitle">Enhanced UI, Skill Filters, and Echoes Browser for Project Ebonhold</p>
+
+        <div class="badges">
+            <span class="badge version">v0.0.6</span>
+            <span class="badge wow">WoW 3.3.5a</span>
+            <span class="badge platform">Addon</span>
+        </div>
+
+        <div class="cta-buttons">
+            <a href="https://github.com/Xurkon/PE-EHTweaks/releases/latest" class="btn btn-primary">
+                ⬇️ Download
+            </a>
+            <a href="https://github.com/Xurkon/PE-EHTweaks" class="btn btn-secondary">
+                📂 View on GitHub
+            </a>
+        </div>
+    </div>
+
+    <div class="container">
+        <section style="text-align: center; margin-bottom: 60px;">
+            <img src="images/ui_preview.png" alt="PE-EHTweaks Browser UI"
+                style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid var(--border-color);">
+        </section>
+
+        <section>
+            <h2>Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>🖥️ Modern Browser UI</h3>
+                    <p>A completely overhauled Ebonhold Compendium featuring responsive tabs, context-aware counts, a
+                        sleek dark aesthetic, and a fully resizeable window.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔍 Skill Tree & Echoes Filter</h3>
+                    <p>Search your Skill Tree nodes and Echoes collection instantly. Matches are highlighted while
+                        irrelevant items dim away.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>💎 Echoes Management</h3>
+                    <p>Track your collected Echoes, view detailed rank descriptions, and share your database with
+                        easy-to-use Import/Export tools.</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Latest Changes</h2>
+            <div class="changelog">
+                <h3>v0.0.6 - Hotfix</h3>
+                <ul>
+                    <li><strong>Crash Fix:</strong> Resolved a syntax error preventing the browser from loading.</li>
+                </ul>
+
+                <h3 style="margin-top: 20px;">v0.0.5 - UI Polish & Fixes</h3>
+                <ul>
+                    <li><strong>Responsive Tabs:</strong> Tabs now dynamically resize to share available width.</li>
+                    <li><strong>Context-Aware Counts:</strong> Browser header counts (e.g., "Total Skills: 301") update
+                        based on the active tab.</li>
+                    <li><strong>Visual Overhaul:</strong> Updated backdrop to a cleaner, darker theme with better
+                        borders.</li>
+                    <li><strong>Wider Frame:</strong> Increased default browser width to 700px.</li>
+                    <li><strong>Browser Fix:</strong> Resolved nil error for <code>EHTBROWSER</code> slash command.</li>
+                    <li><strong>LibStub Fix:</strong> Bundled LibStub to prevent missing library errors.</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p>Maintained by <a href="https://github.com/Xurkon">Xurkon</a> for the Project Ebonhold Community</p>
+
+        <div class="support-links">
+            <a href="https://www.patreon.com/Xurkon" class="support-link patreon">❤️ Patreon</a>
+            <a href="https://www.paypal.com/donate?business=kancerous@gmail.com" class="support-link paypal">💙
+                PayPal</a>
+        </div>
+    </footer>
+</body>
+
+</html>
