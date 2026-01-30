@@ -540,8 +540,8 @@ local function CreateBrowserFrame()
     if browserFrame then return browserFrame end
 
     local f = CreateFrame("Frame", "EHTweaks_BrowserFrame", UIParent)
-    f:SetSize(480, 520)
-    f:SetMinResize(480, 400)
+    f:SetSize(600, 520)
+    f:SetMinResize(600, 400)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -587,7 +587,7 @@ local function CreateBrowserFrame()
         local tab = CreateFrame("Button", "$parentTab"..id, f)
         tab:SetID(id)
         tab:SetText(text)
-        tab:SetSize(90, 24)
+        tab:SetSize(110, 26)
         
         -- Style
         tab:SetNormalFontObject("GameFontNormalSmall")
@@ -613,7 +613,7 @@ local function CreateBrowserFrame()
     end
     
     local tab1 = CreateNavTab(1, "Skills", 0)
-    tab1:SetPoint("TOPLEFT", f, "TOPLEFT", 5, -30)
+    tab1:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -35)
     f.tabs[1] = tab1
     
     local tab2 = CreateNavTab(2, "My Echoes", 0)
