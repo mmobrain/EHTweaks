@@ -1,6 +1,6 @@
 -- Author: Skulltrail
 -- EHTweaks: Project Ebonhold Extensions
--- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links, Movable Echo Button, Echoes DB, Starter DB, Objective Tracker, PlayerRunFrame Saver, Minimap Button, Locked Echo Warning
+-- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links, Movable Echo Button, Echoes DB, Starter DB, Objective Tracker, PlayerRunFrame Saver, Minimap Button
 
 local addonName, addon = ...
 
@@ -23,13 +23,13 @@ local DEFAULTS = {
     enableFilters = true,
     enableChatLinks = true,
     enableTracker = true,
-    enableLockedEchoWarning = true,
     seenEchoes = {},
     perkButtonPos = nil,
     runFramePos = nil,
     offeredOptionalDB = nil,
     minimapButtonAngle = 200, -- Default position in degrees
-    minimapButtonHidden = false
+    minimapButtonHidden = false,
+    enableLockedEchoWarning = true
 }
 
 -- --- State ---
@@ -951,7 +951,7 @@ local function CreateMinimapButton()
     return minimapButton
 end
 
-local function ShowMinimapButton()
+function EHTweaks_ShowMinimapButton()
     if not minimapButton then
         CreateMinimapButton()
     else
@@ -963,7 +963,7 @@ local function ShowMinimapButton()
     end
 end
 
-local function HideMinimapButton()
+function EHTweaks_HideMinimapButton()
     if minimapButton then
         minimapButton:Hide()
     end
@@ -983,27 +983,45 @@ local function CreateWarningFrame()
     if warningFrame then return warningFrame end
 
     local f = CreateFrame("Frame", "EHTweaks_WarningFrame", UIParent)
-    f:SetSize(600, 120)
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, 150)
+    f:SetSize(460, 170)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 300)
     f:SetFrameStrata("HIGH")
     f:Hide()
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
 
     f:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = {left = 8, right = 8, top = 8, bottom = 8}
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, tileSize = 0, edgeSize = 1,
+        insets = {left = 0, right = 0, top = 0, bottom = 0},
     })
-    f:SetBackdropColor(0, 0, 0, 0.9)
+    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    f:SetBackdropBorderColor(0, 0, 0, 1)
 
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -15)
-    title:SetText("|cffFF4444Locked Echo Warning|r")
+    local titleBg = f:CreateTexture(nil, "ARTWORK")
+    titleBg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    titleBg:SetVertexColor(0.2, 0.2, 0.2, 1)
+    titleBg:SetHeight(24)
+    titleBg:SetPoint("TOPLEFT", 1, -1)
+    titleBg:SetPoint("TOPRIGHT", -1, -1)
+
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", 0, 0)
+    close:SetSize(24, 24)
+    close:SetScript("OnClick", function() f:Hide() end)
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOP", 0, -6)
+    title:SetText("Locked Echo Warning")
     f.title = title
 
-    local message = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    message:SetPoint("TOP", title, "BOTTOM", 0, -10)
-    message:SetWidth(550)
+    local message = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    message:SetPoint("TOP", titleBg, "BOTTOM", 0, -15)
+    message:SetWidth(440)
     message:SetJustifyH("CENTER")
     f.message = message
 
@@ -1016,32 +1034,72 @@ local function CheckLockedEchoes()
     if not ProjectEbonhold or not ProjectEbonhold.PerkService then return end
 
     local lockedPerks = ProjectEbonhold.PerkService.GetLockedPerks()
+    local grantedPerks = ProjectEbonhold.PerkService.GetGrantedPerks()
+
+    -- Calculate Locked Echoes
+    local lockedCount = 0
+    local echoNames = {}
+    if lockedPerks and type(lockedPerks) == "table" then
+        for _, val in pairs(lockedPerks) do
+            lockedCount = lockedCount + 1
+            
+            local name = "Unknown Echo"
+            if type(val) == "number" then
+                local spellName = GetSpellInfo(val)
+                if spellName then
+                    name = spellName
+                else
+                    name = "ID: " .. val
+                end
+            elseif type(val) == "string" then
+                name = val
+            elseif type(val) == "table" then
+                if val.name then
+                    name = val.name
+                elseif val.spellId then
+                     local spellName = GetSpellInfo(val.spellId)
+                     if spellName then name = spellName else name = "SpellID: " .. val.spellId end
+                elseif val.id then
+                     local spellName = GetSpellInfo(val.id)
+                     if spellName then name = spellName else name = "ID: " .. val.id end
+                else
+                     name = "Unknown Echo (Data Error)" 
+                end
+            end
+            
+            table.insert(echoNames, name)
+        end
+    end
+    local hasLocked = lockedCount > 0
+
+    -- Calculate Granted Echoes (Active)
+    local activeCount = 0
+    if grantedPerks and type(grantedPerks) == "table" then
+         for _, _ in pairs(grantedPerks) do
+             activeCount = activeCount + 1
+         end
+    end
+    local hasAnyEcho = activeCount > 0
 
     local frame = CreateWarningFrame()
 
-    if not lockedPerks or (type(lockedPerks) == "table" and next(lockedPerks) == nil) then
-        -- No locked echo
+    if hasLocked then
+        -- Has locked echo
+        local namesList = table.concat(echoNames, ", ")
+
+        frame.message:SetText("|cff00FF00Locked Echo Detected|r\n\n|cffFFFFFFYou will keep: |cff00FF00" .. namesList .. "|r\n\nVerify this is the echo you want to keep.|r")
+        frame:Show()
+        EHTweaks_Log("Death Check: Found locked echo(s): " .. namesList)
+        
+    elseif hasAnyEcho then
+        -- Has echoes but NONE are locked (Risk of losing them)
         frame.message:SetText("|cffFFFF00You don't have a Locked Echo!|r\n\n|cffFFFFFFAssign a Permanent Echo before respawning\nor you will lose all your echoes.|r")
         frame:Show()
-        EHTweaks_Log("Death Check: No locked echo found")
+        EHTweaks_Log("Death Check: No locked echo found (but has active echoes)")
+        
     else
-        -- Has locked echo
-        local echoCount = 0
-        local echoNames = {}
-
-        if type(lockedPerks) == "table" then
-            for spellName, _ in pairs(lockedPerks) do
-                echoCount = echoCount + 1
-                table.insert(echoNames, spellName)
-            end
-        end
-
-        if echoCount > 0 then
-            local namesList = table.concat(echoNames, ", ")
-            frame.message:SetText("|cff00FF00Locked Echo Detected|r\n\n|cffFFFFFFYou will keep: |cff00FF00" .. namesList .. "|r\n\nVerify this is the echo you want to keep.|r")
-            frame:Show()
-            EHTweaks_Log("Death Check: Found locked echo(s): " .. namesList)
-        end
+        -- Has NO echoes at all (Do nothing)
+        EHTweaks_Log("Death Check: No echoes active")
     end
 end
 
@@ -1129,10 +1187,10 @@ eventFrame:SetScript("OnEvent", function(self, event)
        
         C_Timer.After(1, function()
             if EHTweaksDB and not EHTweaksDB.minimapButtonHidden then
-                ShowMinimapButton()
+                EHTweaks_ShowMinimapButton()
             end
         end)
-
+        
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
 
     elseif event == "PLAYER_DEAD" then
@@ -1147,3 +1205,10 @@ eventFrame:SetScript("OnEvent", function(self, event)
         end)
     end
 end)
+
+SLASH_EHTWARNING1 = '/ehtwarning'
+SlashCmdList['EHTWARNING'] = function()
+    local f = CreateWarningFrame()
+    f.message:SetText('|cff00FF00Locked Echo Detected|r\n\n|cffFFFFFFYou will keep: |cff00FF00Test Echo, Another Echo|r\n\nVerify this is the echo you want to keep.|r')
+    f:Show()
+end
