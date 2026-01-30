@@ -832,11 +832,44 @@ local function CreateBrowserFrame()
         end
     end)
     if EHTweaksDB then cb3:SetChecked(EHTweaksDB.enableTracker) end
-    
+
+    -- Hide Minimap Button Checkbox
+    local cb4 = CreateFrame("CheckButton", "EHTweaks_CB_MinimapButton", settings, "UICheckButtonTemplate")
+    cb4:SetPoint("TOPLEFT", cb3, "BOTTOMLEFT", 0, -10)
+    _G[cb4:GetName().."Text"]:SetText("Hide Minimap Button")
+    cb4:SetScript("OnClick", function(self)
+        if EHTweaksDB then
+            local shouldHide = self:GetChecked() and true or false
+            EHTweaksDB.minimapButtonHidden = shouldHide
+            -- Immediately update visibility
+            if shouldHide then
+                if _G.EHTweaks_MinimapButton then
+                    _G.EHTweaks_MinimapButton:Hide()
+                end
+            else
+                if _G.EHTweaks_MinimapButton then
+                    _G.EHTweaks_MinimapButton:Show()
+                end
+            end
+        end
+    end)
+    if EHTweaksDB then cb4:SetChecked(EHTweaksDB.minimapButtonHidden) end
+
+    -- Locked Echo Warning Checkbox
+    local cb5 = CreateFrame("CheckButton", "EHTweaks_CB_LockedEcho", settings, "UICheckButtonTemplate")
+    cb5:SetPoint("TOPLEFT", cb4, "BOTTOMLEFT", 0, -10)
+    _G[cb5:GetName().."Text"]:SetText("Show Locked Echo Warning on Death")
+    cb5:SetScript("OnClick", function(self)
+        if EHTweaksDB then
+            EHTweaksDB.enableLockedEchoWarning = self:GetChecked() and true or false
+        end
+    end)
+    if EHTweaksDB then cb5:SetChecked(EHTweaksDB.enableLockedEchoWarning) end
+
     -- Apply & Reload Button
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
-    reloadBtn:SetPoint("TOPLEFT", cb3, "BOTTOMLEFT", 0, -30)
+    reloadBtn:SetPoint("TOPLEFT", cb5, "BOTTOMLEFT", 0, -30)
     reloadBtn:SetText("Apply and Reload UI")
     reloadBtn:SetScript("OnClick", function()
         ReloadUI()
