@@ -6,6 +6,7 @@
 ## Author: Skulltrail
 ## Version: alpha 0.0.5
 
+libs\LibStub\LibStub.lua
 libs\LibDeflate\lib.xml
 DB\db.lua
 EHtweaks.lua
