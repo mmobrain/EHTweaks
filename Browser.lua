@@ -633,7 +633,7 @@ local function CreateBrowserFrame()
     f.tabs[5] = tab5
     
     -- Initialize Tab State
-    SetTab(1)
+    -- Initialize Tab State (Moved to end)
 
     -- Search
     local sb = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
@@ -811,7 +811,7 @@ local function CreateBrowserFrame()
     end)
     
     -- Initial Layout
-    f:UpdateLayout()
+    -- Initial Layout (Moved to end)
 
     
     -- SETTINGS FRAME
@@ -1042,6 +1042,10 @@ end)
         }
         StaticPopup_Show("EHTWEAKS_PURGE")
     end)
+    
+    -- Initial Layout & Tab Selection (Must be last)
+    f:UpdateLayout()
+    SetTab(1)
     
     return f
 end
