@@ -75,6 +75,7 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 
 ## Credits
 *   **Author:** Skulltrail
+*   **UI Reskin & Fixes:** Xurkon
 
 ## License
 This project is released under the [MIT License](LICENSE.md).
