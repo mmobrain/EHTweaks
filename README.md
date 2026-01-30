@@ -74,8 +74,9 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 *   **Server**: Project Ebonhold
 
 ## Credits
-*   **Author:** Skulltrail
-*   **UI Reskin & Fixes:** Xurkon
+*   **Skulltrail:** Author
+*   **Xurkon:** UI Reskin & Fixes
+*   **MedianAura:** Features - Hide minimap button, display a warning on screen when you die that warn you to check permanent echo before respawning
 
 ## License
 This project is released under the [MIT License](LICENSE.md).
