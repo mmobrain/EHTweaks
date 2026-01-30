@@ -1,5 +1,13 @@
 # EHTweaks
 
+<div align="center">
+
+![Version](https://img.shields.io/badge/Version-v0.0.6-blue?style=for-the-badge)
+![WoW](https://img.shields.io/badge/WoW-3.3.5a-orange?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-Addon-green?style=for-the-badge)
+
+</div>
+
 **EHTweaks** is a collection of UI enhancements and quality-of-life improvements designed specifically for the Project Ebonhold custom character progression system. 
 
 It extends the default Project Ebonhold interface with searching, filtering, and browsing capabilities to help you plan and manage your classless builds more effectively.
