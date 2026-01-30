@@ -906,7 +906,11 @@ local function CreateMinimapButton()
                 end
             else
                 -- Trigger the slash command to create the frame if it doesn't exist
-                SlashCmdList["EHTBROWSER"]("")
+                if SlashCmdList["EHTBROWSER"] then
+                    SlashCmdList["EHTBROWSER"]("")
+                else
+                    print("|cffff0000EHTweaks:|r Browser module not loaded.")
+                end
             end
         end
     end)
