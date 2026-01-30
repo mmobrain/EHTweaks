@@ -1,6 +1,6 @@
 -- Author: Skulltrail
 -- EHTweaks: Project Ebonhold Extensions
--- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links, Movable Echo Button, Echoes DB, Starter DB, Objective Tracker, PlayerRunFrame Saver, Minimap Button
+-- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links, Movable Echo Button, Echoes DB, Starter DB, Objective Tracker, PlayerRunFrame Saver, Minimap Button, Locked Echo Warning
 
 local addonName, addon = ...
 
@@ -23,6 +23,7 @@ local DEFAULTS = {
     enableFilters = true,
     enableChatLinks = true,
     enableTracker = true,
+    enableLockedEchoWarning = true,
     seenEchoes = {},
     perkButtonPos = nil,
     runFramePos = nil,
@@ -969,11 +970,91 @@ local function HideMinimapButton()
 end
 
 -- =========================================================
+-- SECTION 8: LOCKED ECHO CHECKER ON DEATH
+-- =========================================================
+
+local warningFrame = nil
+
+local function CreateWarningFrame()
+    if warningFrame then return warningFrame end
+
+    local f = CreateFrame("Frame", "EHTweaks_WarningFrame", UIParent)
+    f:SetSize(600, 120)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 150)
+    f:SetFrameStrata("HIGH")
+    f:Hide()
+
+    f:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = {left = 8, right = 8, top = 8, bottom = 8}
+    })
+    f:SetBackdropColor(0, 0, 0, 0.9)
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -15)
+    title:SetText("|cffFF4444Locked Echo Warning|r")
+    f.title = title
+
+    local message = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    message:SetPoint("TOP", title, "BOTTOM", 0, -10)
+    message:SetWidth(550)
+    message:SetJustifyH("CENTER")
+    f.message = message
+
+    warningFrame = f
+    return f
+end
+
+local function CheckLockedEchoes()
+    if not EHTweaksDB or not EHTweaksDB.enableLockedEchoWarning then return end
+    if not ProjectEbonhold or not ProjectEbonhold.PerkService then return end
+
+    local lockedPerks = ProjectEbonhold.PerkService.GetLockedPerks()
+
+    local frame = CreateWarningFrame()
+
+    if not lockedPerks or (type(lockedPerks) == "table" and next(lockedPerks) == nil) then
+        -- No locked echo
+        frame.message:SetText("|cffFFFF00You don't have a Locked Echo!|r\n\n|cffFFFFFFAssign a Permanent Echo before respawning\nor you will lose all your echoes.|r")
+        frame:Show()
+        EHTweaks_Log("Death Check: No locked echo found")
+    else
+        -- Has locked echo
+        local echoCount = 0
+        local echoNames = {}
+
+        if type(lockedPerks) == "table" then
+            for spellName, _ in pairs(lockedPerks) do
+                echoCount = echoCount + 1
+                table.insert(echoNames, spellName)
+            end
+        end
+
+        if echoCount > 0 then
+            local namesList = table.concat(echoNames, ", ")
+            frame.message:SetText("|cff00FF00Locked Echo Detected|r\n\n|cffFFFFFFYou will keep: |cff00FF00" .. namesList .. "|r\n\nVerify this is the echo you want to keep.|r")
+            frame:Show()
+            EHTweaks_Log("Death Check: Found locked echo(s): " .. namesList)
+        end
+    end
+end
+
+local function HideWarningFrame()
+    if warningFrame then
+        warningFrame:Hide()
+    end
+end
+
+-- =========================================================
 -- INITIALIZATION
 -- =========================================================
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("PLAYER_DEAD")
+eventFrame:RegisterEvent("PLAYER_ALIVE")
 eventFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_ENTERING_WORLD" then
         InitializeDB()
@@ -1047,7 +1128,18 @@ eventFrame:SetScript("OnEvent", function(self, event)
                 ShowMinimapButton()
             end
         end)
-        
+
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+
+    elseif event == "PLAYER_DEAD" then
+        -- Check for locked echoes when player dies
+        C_Timer.After(1, CheckLockedEchoes)
+
+    elseif event == "PLAYER_ALIVE" then
+        -- Hide warning when player gets back alive
+        C_Timer.After(0.5, function()
+            HideWarningFrame()
+            EHTweaks_Log("Player is alive, hiding warning")
+        end)
     end
 end)
