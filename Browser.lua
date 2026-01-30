@@ -531,6 +531,9 @@ local function SetTab(id)
     UpdateScroll()
 end
 
+local function CreateBrowserFrame()
+    if browserFrame then return browserFrame end
+
     local f = CreateFrame("Frame", "EHTweaks_BrowserFrame", UIParent)
     f:SetSize(480, 520)
     f:SetMinResize(480, 400)
