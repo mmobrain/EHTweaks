@@ -1,23 +1,4 @@
-<div align="center">
-
 # EHTweaks
-
-![Version](https://img.shields.io/badge/version-v0.0.6-blue.svg?style=for-the-badge)
-![Downloads](https://img.shields.io/github/downloads/Xurkon/PE-EHTweaks/total?style=for-the-badge&color=e67e22)
-[![Documentation](https://img.shields.io/badge/Documentation-View%20Docs-58a6ff?style=for-the-badge)](docs/index.html)
-[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/Xurkon)
-[![PayPal](https://img.shields.io/badge/PayPal-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://www.paypal.me/Xurkon)
-![License](https://img.shields.io/github/license/Xurkon/PE-EHTweaks?style=for-the-badge&color=2980b9)
-![Lua](https://img.shields.io/badge/LUA-5.1-blue?style=for-the-badge&logo=lua&logoColor=white)
-![Platform](https://img.shields.io/badge/PLATFORM-WoW%203.3.5a-blue?style=for-the-badge&logo=windows&logoColor=white)
-
-<br/>
-
-**Enhanced UI, Skill Filters, and Echoes Browser for Project Ebonhold**
-
-[⬇ **Download Latest**](https://github.com/Xurkon/PE-EHTweaks/releases/latest) &nbsp;&nbsp;•&nbsp;&nbsp; [📂 **View Source**](https://github.com/Xurkon/PE-EHTweaks) &nbsp;&nbsp;•&nbsp;&nbsp; [📖 **Read Documentation**](docs/index.html)
-
-</div>
 
 **EHTweaks** is a collection of UI enhancements and quality-of-life improvements designed specifically for the Project Ebonhold custom character progression system. 
 
