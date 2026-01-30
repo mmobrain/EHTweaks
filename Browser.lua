@@ -8,7 +8,7 @@ local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
 -- --- Configuration ---
 local ROW_HEIGHT = 44
-local MAX_ROWS = 10
+local MIN_ROWS = 8
 local BROWSER_TITLE = "Ebonhold Compendium"
 local EXPORT_HEADER = "!EHT1!"
 
@@ -446,73 +446,78 @@ local function UpdateScroll()
     local FauxScrollFrame_Update = FauxScrollFrame_Update
     local offset = FauxScrollFrame_GetOffset(browserFrame.scroll)
     local numItems = #filteredData
+    local maxRows = browserFrame.maxRows or MIN_ROWS
     
-    for i = 1, MAX_ROWS do
+    for i = 1, #browserFrame.rows do
         local row = browserFrame.rows[i]
-        local index = offset + i
-        
-        if index <= numItems then
-            local data = filteredData[index]
-            row.data = data
+        if i > maxRows then
+            row:Hide()
+        else
+            local index = offset + i
             
-            row.icon:SetTexture(data.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-            
-            if data.isPerk then
-                local color = QUALITY_COLORS[data.quality] or QUALITY_COLORS[0]
-                row.name:SetText(data.name)
-                row.name:SetTextColor(color.r, color.g, color.b)
+            if index <= numItems then
+                local data = filteredData[index]
+                row.data = data
                 
-                if data.isHistory then
-                    -- Render C U R E L pips
-                    local pips = ""
-                    local map = data.qualityMap or {}
-                    
-                    if map[0] then pips = pips .. "|cffffffffC|r " else pips = pips .. "|cff555555C|r " end
-                    if map[1] then pips = pips .. "|cff1eff00U|r " else pips = pips .. "|cff555555U|r " end
-                    if map[2] then pips = pips .. "|cff0070ddR|r " else pips = pips .. "|cff555555R|r " end
-                    if map[3] then pips = pips .. "|cffa335eeE|r " else pips = pips .. "|cff555555E|r " end
-                    if map[4] then pips = pips .. "|cffff8000L|r"  else pips = pips .. "|cff555555L|r"  end
-                    
-                    row.cost:SetText(pips)
-                    
-                    -- Type text is Rarity Name (e.g. "Rare") based on highest discovered
-                    local hName = QUALITY_COLORS[data.quality] and QUALITY_COLORS[data.quality].name or "Unknown"
-                    row.typeText:SetText(hName)
-                    row.typeText:SetTextColor(color.r, color.g, color.b)
-                else
-                    row.cost:SetText("Stack: " .. (data.stack or 1))
-                    row.typeText:SetText(color.name)
-                    row.typeText:SetTextColor(color.r, color.g, color.b)
-                end
-            else
-                row.name:SetText(data.name)
-                row.name:SetTextColor(1, 1, 1)
+                row.icon:SetTexture(data.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
                 
-                if data.isChoice then
-                    row.cost:SetText("|cffFFD700" .. data.cost .. "|r SP")
-                    row.typeText:SetText("Choice")
-                    row.typeText:SetTextColor(1, 0.5, 0)
-                else
-                    local rankCount = #data.ranks
-                    if rankCount > 1 then
-                        row.cost:SetText("|cffFFD700" .. data.cost .. "-" .. data.maxCost .. "|r SP")
-                        row.typeText:SetText("Rank 1-" .. rankCount)
-                        row.typeText:SetTextColor(0, 1, 0)
+                if data.isPerk then
+                    local color = QUALITY_COLORS[data.quality] or QUALITY_COLORS[0]
+                    row.name:SetText(data.name)
+                    row.name:SetTextColor(color.r, color.g, color.b)
+                    
+                    if data.isHistory then
+                        -- Render C U R E L pips
+                        local pips = ""
+                        local map = data.qualityMap or {}
+                        
+                        if map[0] then pips = pips .. "|cffffffffC|r " else pips = pips .. "|cff555555C|r " end
+                        if map[1] then pips = pips .. "|cff1eff00U|r " else pips = pips .. "|cff555555U|r " end
+                        if map[2] then pips = pips .. "|cff0070ddR|r " else pips = pips .. "|cff555555R|r " end
+                        if map[3] then pips = pips .. "|cffa335eeE|r " else pips = pips .. "|cff555555E|r " end
+                        if map[4] then pips = pips .. "|cffff8000L|r"  else pips = pips .. "|cff555555L|r"  end
+                        
+                        row.cost:SetText(pips)
+                        
+                        -- Type text is Rarity Name (e.g. "Rare") based on highest discovered
+                        local hName = QUALITY_COLORS[data.quality] and QUALITY_COLORS[data.quality].name or "Unknown"
+                        row.typeText:SetText(hName)
+                        row.typeText:SetTextColor(color.r, color.g, color.b)
                     else
+                        row.cost:SetText("Stack: " .. (data.stack or 1))
+                        row.typeText:SetText(color.name)
+                        row.typeText:SetTextColor(color.r, color.g, color.b)
+                    end
+                else
+                    row.name:SetText(data.name)
+                    row.name:SetTextColor(1, 1, 1)
+                    
+                    if data.isChoice then
                         row.cost:SetText("|cffFFD700" .. data.cost .. "|r SP")
-                        row.typeText:SetText("Passive")
-                        row.typeText:SetTextColor(0.8, 0.8, 0.8)
+                        row.typeText:SetText("Choice")
+                        row.typeText:SetTextColor(1, 0.5, 0)
+                    else
+                        local rankCount = #data.ranks
+                        if rankCount > 1 then
+                            row.cost:SetText("|cffFFD700" .. data.cost .. "-" .. data.maxCost .. "|r SP")
+                            row.typeText:SetText("Rank 1-" .. rankCount)
+                            row.typeText:SetTextColor(0, 1, 0)
+                        else
+                            row.cost:SetText("|cffFFD700" .. data.cost .. "|r SP")
+                            row.typeText:SetText("Passive")
+                            row.typeText:SetTextColor(0.8, 0.8, 0.8)
+                        end
                     end
                 end
+                
+                row:Show()
+            else
+                row:Hide()
             end
-            
-            row:Show()
-        else
-            row:Hide()
         end
     end
     
-    FauxScrollFrame_Update(browserFrame.scroll, numItems, MAX_ROWS, ROW_HEIGHT)
+    FauxScrollFrame_Update(browserFrame.scroll, numItems, maxRows, ROW_HEIGHT)
 end
 
 local function SetTab(id)
@@ -526,88 +531,115 @@ local function SetTab(id)
     UpdateScroll()
 end
 
-local function CreateBrowserFrame()
-    if browserFrame then return browserFrame end
-    
     local f = CreateFrame("Frame", "EHTweaks_BrowserFrame", UIParent)
-    f:SetSize(464, 520)
+    f:SetSize(480, 520)
+    f:SetMinResize(480, 400)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
+    f:SetResizable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     
+    -- Sleek Backdrop
     f:SetBackdrop({
-            bgFile = "Interface\\ChatFrame\\ChatFrameBackground",            
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 32,
-            insets = {left = 8, right = 8, top = 8, bottom = 8},
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
     })
-    f:SetBackdropColor(0, 0, 0, 1)
+    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    f:SetBackdropBorderColor(0, 0, 0, 1)
     
     browserFrame = f
     
+    -- Title Background Stripe
+    local titleBg = f:CreateTexture(nil, "BACKGROUND")
+    titleBg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    titleBg:SetVertexColor(0.2, 0.2, 0.2, 1)
+    titleBg:SetHeight(24)
+    titleBg:SetPoint("TOPLEFT", 1, -1)
+    titleBg:SetPoint("TOPRIGHT", -1, -1)
+    
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOP", 0, -12)
+    title:SetPoint("TOP", 0, -6)
     title:SetText(BROWSER_TITLE)
     
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", -5, -5)
+    close:SetPoint("TOPRIGHT", 0, 0)
+    close:SetSize(24, 24)
     
-    -- TABS
+    -- TABS (Top Navigation Style)
     f.numTabs = 5
     f.tabs = {}
     
-    local tab1 = CreateFrame("Button", "$parentTab1", f, "CharacterFrameTabButtonTemplate")
-    tab1:SetID(1)
-    tab1:SetText("Skill Tree")
-    tab1:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, -28)
-    tab1:SetScript("OnClick", function() SetTab(1) end)
-    PanelTemplates_TabResize(tab1, 0)
+    local function CreateNavTab(id, text, x)
+        local tab = CreateFrame("Button", "$parentTab"..id, f)
+        tab:SetID(id)
+        tab:SetText(text)
+        tab:SetSize(90, 24)
+        
+        -- Style
+        tab:SetNormalFontObject("GameFontNormalSmall")
+        tab:SetHighlightFontObject("GameFontHighlightSmall")
+        
+        local bg = tab:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        bg:SetVertexColor(0.15, 0.15, 0.15, 1)
+        tab.bg = bg
+        
+        tab:SetScript("OnEnter", function(self) self.bg:SetVertexColor(0.25, 0.25, 0.25, 1) end)
+        tab:SetScript("OnLeave", function(self) 
+             if activeTab ~= self:GetID() then
+                 self.bg:SetVertexColor(0.15, 0.15, 0.15, 1) 
+             else
+                 self.bg:SetVertexColor(0.3, 0.3, 0.3, 1)
+             end
+        end)
+        tab:SetScript("OnClick", function() SetTab(id) end)
+        
+        return tab
+    end
+    
+    local tab1 = CreateNavTab(1, "Skills", 0)
+    tab1:SetPoint("TOPLEFT", f, "TOPLEFT", 5, -30)
     f.tabs[1] = tab1
     
-    local tab2 = CreateFrame("Button", "$parentTab2", f, "CharacterFrameTabButtonTemplate")
-    tab2:SetID(2)
-    tab2:SetText("My Echoes")
-    tab2:SetPoint("LEFT", tab1, "RIGHT", -16, 0)
-    tab2:SetScript("OnClick", function() SetTab(2) end)
-    PanelTemplates_TabResize(tab2, 0)
+    local tab2 = CreateNavTab(2, "My Echoes", 0)
+    tab2:SetPoint("LEFT", tab1, "RIGHT", 2, 0)
     f.tabs[2] = tab2
     
-    local tab3 = CreateFrame("Button", "$parentTab3", f, "CharacterFrameTabButtonTemplate")
-    tab3:SetID(3)
-    tab3:SetText("Echoes DB")
-    tab3:SetPoint("LEFT", tab2, "RIGHT", -16, 0)
-    tab3:SetScript("OnClick", function() SetTab(3) end)
-    PanelTemplates_TabResize(tab3, 0)
+    local tab3 = CreateNavTab(3, "Echoes DB", 0)
+    tab3:SetPoint("LEFT", tab2, "RIGHT", 2, 0)
     f.tabs[3] = tab3
     
-    local tab4 = CreateFrame("Button", "$parentTab4", f, "CharacterFrameTabButtonTemplate")
-    tab4:SetID(4)
-    tab4:SetText("Settings")
-    tab4:SetPoint("LEFT", tab3, "RIGHT", -16, 0)
-    tab4:SetScript("OnClick", function() SetTab(4) end)
-    PanelTemplates_TabResize(tab4, 0)
+    local tab4 = CreateNavTab(4, "Settings", 0)
+    tab4:SetPoint("LEFT", tab3, "RIGHT", 2, 0)
     f.tabs[4] = tab4
     
-    local tab5 = CreateFrame("Button", "$parentTab5", f, "CharacterFrameTabButtonTemplate")
-    tab5:SetID(5)
-    tab5:SetText("Import/Export")
-    tab5:SetPoint("LEFT", tab4, "RIGHT", -16, 0)
-    tab5:SetScript("OnClick", function() SetTab(5) end)
-    PanelTemplates_TabResize(tab5, 0)
+    local tab5 = CreateNavTab(5, "Import", 0)
+    tab5:SetPoint("LEFT", tab4, "RIGHT", 2, 0)
     f.tabs[5] = tab5
     
-    PanelTemplates_SetNumTabs(f, 5)
-    PanelTemplates_SetTab(f, 1)
-    PanelTemplates_UpdateTabs(f)
-    
+    -- Hook SetTab to style nav buttons
+    hooksecurefunc("PanelTemplates_SetTab", function(frame, id)
+        if frame ~= f then return end
+        for k, t in ipairs(f.tabs) do
+             if k == id then
+                 t.bg:SetVertexColor(0.3, 0.3, 0.3, 1)
+             else
+                 t.bg:SetVertexColor(0.15, 0.15, 0.15, 1)
+             end
+        end
+    end)
+
     -- Search
     local sb = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
     sb:SetSize(200, 20)
-    sb:SetPoint("TOPLEFT", 20, -40)
+    sb:SetPoint("TOPRIGHT", -30, -32)
     sb:SetAutoFocus(false)
     sb:SetScript("OnTextChanged", function(self)
         RefreshData()
@@ -616,8 +648,8 @@ local function CreateBrowserFrame()
     f.searchBox = sb
     
     local sbLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    sbLabel:SetPoint("BOTTOMLEFT", sb, "TOPLEFT", -2, 0)
-    sbLabel:SetText("Filter (Name/Desc):")
+    sbLabel:SetPoint("RIGHT", sb, "LEFT", -5, 0)
+    sbLabel:SetText("Filter:")
     f.searchLabel = sbLabel
     
     -- Clear Button for Browser Search
@@ -639,153 +671,150 @@ local function CreateBrowserFrame()
     local sf = CreateFrame("ScrollFrame", "EHTweaks_BrowserScroll", f, "FauxScrollFrameTemplate")
     sf:SetPoint("TOPLEFT", 10, -70)
     sf:SetPoint("BOTTOMRIGHT", -30, 30)
-    sf:SetScript("OnVerticalScroll", function(self, offset)
-        FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, UpdateScroll)
+        if self.scroll then
+             FauxScrollFrame_OnVerticalScroll(self.scroll, offset, ROW_HEIGHT, UpdateScroll) 
+        end
     end)
     f.scroll = sf
     
-    -- Rows
-    f.rows = {}
-    for i = 1, MAX_ROWS do
-        local row = CreateFrame("Button", nil, f)
-        row:SetSize(424, ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", 15, -70 - (i-1)*ROW_HEIGHT)
+    -- Resize Handle
+    local resize = CreateFrame("Button", nil, f)
+    resize:SetSize(16, 16)
+    resize:SetPoint("BOTTOMRIGHT")
+    resize:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    resize:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    resize:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    resize:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
+    resize:SetScript("OnMouseUp", function() f:StopMovingOrSizing() end)
+    f.resizeBtn = resize
+
+    -- Dynamic Row Creator
+    f.CreateRows = function(self)
+        local h = self:GetHeight()
+        local availableH = h - 90 -- Top + Bottom padding
+        local count = math.floor(availableH / ROW_HEIGHT)
+        if count < MIN_ROWS then count = MIN_ROWS end
+        self.maxRows = count
         
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-        hl:SetAlpha(0.3)
+        if not self.rows then self.rows = {} end
         
-        local icon = row:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(36, 36)
-        icon:SetPoint("LEFT", 5, 0)
-        row.icon = icon
-        
-        local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, 0)
-        name:SetJustifyH("LEFT")
-        row.name = name
-        
-        local typeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        typeText:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", 10, 0)
-        typeText:SetJustifyH("LEFT")
-        row.typeText = typeText
-        
-        local cost = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        cost:SetPoint("RIGHT", -10, 0)
-        row.cost = cost
-        
-        row:SetScript("OnEnter", function(self)
-            if not self.data then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:ClearLines()
-            
-            if self.data.isPerk then
-                -- Smart Multi-Quality Tooltip Logic
-                if self.data.isHistory and self.data.qualityMap then
-                    local color = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
-                    GameTooltip:AddLine(self.data.name, color.r, color.g, color.b)
-                    GameTooltip:AddLine(" ")
+        for i = 1, count do
+            if not self.rows[i] then
+                local row = CreateFrame("Button", nil, f)
+                row:SetSize(424, ROW_HEIGHT)
+                -- We set points dynamically in UpdateLayout
+                
+                local hl = row:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+                hl:SetAlpha(0.3)
+                
+                local icon = row:CreateTexture(nil, "ARTWORK")
+                icon:SetSize(36, 36)
+                icon:SetPoint("LEFT", 5, 0)
+                row.icon = icon
+                
+                local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                name:SetPoint("TOPLEFT", icon, "TOPRIGHT", 10, 0)
+                name:SetJustifyH("LEFT")
+                row.name = name
+                
+                local typeText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                typeText:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", 10, 0)
+                typeText:SetJustifyH("LEFT")
+                row.typeText = typeText
+                
+                local cost = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                cost:SetPoint("RIGHT", -10, 0)
+                row.cost = cost
+                
+                row:SetScript("OnEnter", function(self)
+                    if not self.data then return end
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:ClearLines()
                     
-                    -- Loop all possible qualities
-                    for q = 0, 4 do
-                        local sID = self.data.qualityMap[q]
-                        if sID then
-                            local qColor = QUALITY_COLORS[q]
-                            local qName = qColor.name or "Unknown"
-                            
-                            -- Get detailed description
-                            local desc = utils.GetSpellDescription(sID, 999, 1)
-                            
-                            -- Add Header (e.g., "Rare")
-                            GameTooltip:AddLine(qName, qColor.r, qColor.g, qColor.b)
-                            -- Add Description (White/Gold)
-                            GameTooltip:AddLine(desc, 1, 0.82, 0, true)
+                    if self.data.isPerk then
+                        if self.data.isHistory and self.data.qualityMap then
+                            local color = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
+                            GameTooltip:AddLine(self.data.name, color.r, color.g, color.b)
                             GameTooltip:AddLine(" ")
+                            for q = 0, 4 do
+                                local sID = self.data.qualityMap[q]
+                                if sID then
+                                    local qColor = QUALITY_COLORS[q]
+                                    local qName = qColor.name or "Unknown"
+                                    local desc = utils.GetSpellDescription(sID, 999, 1)
+                                    GameTooltip:AddLine(qName, qColor.r, qColor.g, qColor.b)
+                                    GameTooltip:AddLine(desc, 1, 0.82, 0, true)
+                                    GameTooltip:AddLine(" ")
+                                end
+                            end
+                        else
+                            local c = QUALITY_COLORS[self.data.quality]
+                            GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
+                            local desc = GetRichDescription(self.data)
+                            if desc then GameTooltip:AddLine(desc, 1, 0.82, 0, true) end
+                            GameTooltip:AddLine(" ")
+                            GameTooltip:AddLine("Current Stack: " .. self.data.stack, 1, 1, 1)
+                        end
+                    else
+                        GameTooltip:AddLine(self.data.name, 1, 1, 1)
+                        for i, spellId in ipairs(self.data.ranks or {}) do
+                            local d = utils.GetSpellDescription(spellId, 999, 1)
+                            GameTooltip:AddLine("Rank " .. i .. ": " .. d, 0.8, 0.8, 0.8, true)
+                        end
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("Click to view in Skill Tree", 0, 1, 0)
+                    end
+                    GameTooltip:AddLine("Ctrl+Alt+Click to Link", 0.6, 0.6, 0.6)
+                    GameTooltip:Show()
+                end)
+                row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                
+                row:SetScript("OnClick", function(self)
+                    if not self.data then return end
+                    if EHTweaks_HandleLinkClick(self.data.spellId) then return end
+                    if self.data.isPerk then return end
+                    if _G.skillTreeFrame then _G.skillTreeFrame:Show() end
+                    local btn = _G["skillTreeNode" .. self.data.nodeId]
+                    if btn and _G.skillTreeScroll then
+                        local scroll = _G.skillTreeScroll
+                        local _, _, _, xOfs, yOfs = btn:GetPoint(1)
+                        if xOfs then
+                           scroll:SetHorizontalScroll(math.max(0, xOfs - (scroll:GetWidth()/2)))
+                           scroll:SetVerticalScroll(math.max(0, math.abs(yOfs) - (scroll:GetHeight()/2)))
                         end
                     end
-                else
-                    -- Fallback/Standard logic for My Echoes
-                    local c = QUALITY_COLORS[self.data.quality]
-                    GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
-                    
-                    local desc = GetRichDescription(self.data)
-                    if desc then
-                        GameTooltip:AddLine(desc, 1, 0.82, 0, true)
-                    end
-                    
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Current Stack: " .. self.data.stack, 1, 1, 1)
-                end
-            else
-                -- Skill Tree Nodes
-                GameTooltip:AddLine(self.data.name, 1, 1, 1)
-                for i, spellId in ipairs(self.data.ranks or {}) do
-                    local d = utils.GetSpellDescription(spellId, 999, 1)
-                    GameTooltip:AddLine("Rank " .. i .. ": " .. d, 0.8, 0.8, 0.8, true)
-                end
-                
-                GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("Click to view in Skill Tree", 0, 1, 0)
+                end)
+                self.rows[i] = row
             end
-            
-            GameTooltip:AddLine("Ctrl+Alt+Click to Link", 0.6, 0.6, 0.6)
-            GameTooltip:Show()
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        
-        row:SetScript("OnClick", function(self)
-            if not self.data then return end
-            
-            if EHTweaks_HandleLinkClick(self.data.spellId) then return end
-            
-            if self.data.isPerk then return end
-            
-            if _G.skillTreeFrame then _G.skillTreeFrame:Show() end
-            
-            local btn = _G["skillTreeNode" .. self.data.nodeId]
-            if btn and _G.skillTreeScroll then
-                local scroll = _G.skillTreeScroll
-                local _, _, _, xOfs, yOfs = btn:GetPoint(1)
-                if xOfs then
-                    local h = xOfs - (scroll:GetWidth()/2)
-                    local v = math.abs(yOfs) - (scroll:GetHeight()/2)
-                    scroll:SetHorizontalScroll(math.max(0, h))
-                    scroll:SetVerticalScroll(math.max(0, v))
-                    
-                    if not btn.browserGlow then
-                        local glow = btn:CreateTexture(nil, "OVERLAY")
-                        glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
-                        glow:SetBlendMode("ADD")
-                        glow:SetVertexColor(1, 0.5, 0, 1) 
-                        glow:SetPoint("CENTER", btn, "CENTER", 0, 0)
-                        glow:SetSize(btn:GetWidth() * 2, btn:GetHeight() * 2)
-                        
-                        local ag = glow:CreateAnimationGroup()
-                        local a1 = ag:CreateAnimation("Alpha")
-                        a1:SetChange(-1) 
-                        a1:SetDuration(1)
-                        a1:SetOrder(1)
-                        ag:SetLooping("REPEAT")
-                        
-                        btn.browserGlow = glow
-                        btn.browserGlowAnim = ag
-                    end
-                    
-                    btn.browserGlow:Show()
-                    btn.browserGlowAnim:Play()
-                    C_Timer.After(5, function() 
-                        if btn.browserGlow then 
-                            btn.browserGlow:Hide()
-                            btn.browserGlowAnim:Stop()
-                        end 
-                    end)
-                end
-            end
-        end)
-        
-        f.rows[i] = row
+        end
+        UpdateScroll()
     end
+    
+    f.UpdateLayout = function(self)
+        self:CreateRows()
+        
+        local w = self:GetWidth()
+        local contentW = w - 40 -- margins
+        
+        self.scroll:SetPoint("BOTTOMRIGHT", -30, 30)
+        self.searchBox:SetWidth(w - 260)
+        
+        for i, row in ipairs(self.rows) do
+             row:SetWidth(contentW)
+             row:SetPoint("TOPLEFT", 15, -70 - (i-1)*ROW_HEIGHT)
+        end
+        UpdateScroll()
+    end
+    
+    f:SetScript("OnSizeChanged", function(self)
+        self:UpdateLayout()
+    end)
+    
+    -- Initial Layout
+    f:UpdateLayout()
+
     
     -- SETTINGS FRAME
     local settings = CreateFrame("Frame", nil, f)
@@ -937,6 +966,12 @@ end)
         StaticPopup_Show("EHTWEAKS_IMPORT")
     end)
     
+    local separator = import:CreateTexture(nil, "ARTWORK")
+    separator:SetHeight(1)
+    separator:SetPoint("TOPLEFT", importBtn, "BOTTOMLEFT", 0, -20)
+    separator:SetPoint("RIGHT", -20, 0)
+    separator:SetTexture("Interface\\Buttons\\WHITE8X8")
+    separator:SetVertexColor(0.3, 0.3, 0.3, 0.5)
     
     -- Starter DB Controls (Manual)
     if _G.ETHTweaks_OptionalDB_Data then
