@@ -15,7 +15,7 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 
 ### 🔄 Fail-Safe Tree Reset (New in alpha 0.0.9)
 *   **Reliable Refunds**: Adds a "Reset Tree" button to the bottom bar.
-*   **Logic**: EHTweaks clears your tree by applying a 1-point starter build, ensuring 100% reliability for Soul Ash refunds (this is a workaround for now - you can manually refund the last point).
+*   **Logic**: EHTweaks clears your tree by applying a 1-point starter build, ensuring 100% reliability for Soul Ash refunds (this is a workaround for now - you can manually refund the last skill).
 
 ### 🔍 Skill Tree Filtering
 *   **Search Box**: Adds a filter input to the Skill Tree window.
