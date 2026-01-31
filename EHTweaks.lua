@@ -1,6 +1,6 @@
 -- Author: Skulltrail
 -- EHTweaks: Project Ebonhold Extensions
--- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links, Movable Echo Button, Echoes DB, Starter DB, Objective Tracker, PlayerRunFrame Saver, Minimap Button
+-- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links, Movable Echo Button, Echoes DB, Starter DB, Objective Tracker, PlayerRunFrame Saver, Minimap Button, Skill Tree Reset Button, Loadout Manager
 
 local addonName, addon = ...
 
@@ -41,12 +41,35 @@ local echoFilterBox = nil
 local matchedNodes = {} 
 local minimapButton = nil
 
+-- LOADOUT TRACKING STATE
+local activeLoadoutId = nil
+local knownLoadouts = {} -- [Name] = ID
+
 -- --- Database Init ---
 local function InitializeDB()
     if not EHTweaksDB then EHTweaksDB = {} end
     for k, v in pairs(DEFAULTS) do
         if EHTweaksDB[k] == nil then EHTweaksDB[k] = v end
     end
+    -- Initialize Loadout Tables
+    if not EHTweaksDB.loadouts then EHTweaksDB.loadouts = {} end
+    if not EHTweaksDB.backups then EHTweaksDB.backups = {} end
+end
+
+-- --- Global Loadout Utilities ---
+
+function EHTweaks_GetActiveLoadoutInfo()
+    local name = "Default"
+    -- Try to find the name that matches the current active ID
+    if activeLoadoutId and knownLoadouts then
+        for k, v in pairs(knownLoadouts) do
+            if v == activeLoadoutId then
+                name = k
+                break
+            end
+        end
+    end
+    return activeLoadoutId, name
 end
 
 -- =========================================================
@@ -157,7 +180,7 @@ local function SetHighlight(btn, isMatch)
 end
 
 -- =========================================================
--- SECTION 1: SKILL TREE FILTER
+-- SECTION 1: SKILL TREE EXTENSIONS
 -- =========================================================
 
 local function FocusNode(nodeId)
@@ -314,6 +337,126 @@ local function CreateSkillFilterFrame()
     end
 
     filterBox = eb
+end
+
+-- =========================================================
+-- SAVE & RESET BUTTONS
+-- =========================================================
+
+local function CreateExtraTreeButtons()
+    if not _G.skillTreeBottomBar then return end
+    if _G.EHTweaks_ResetTreeButton then return end
+
+    -- --- RESET BUTTON ---
+    local resetBtn = CreateFrame("Button", "EHTweaks_ResetTreeButton", _G.skillTreeBottomBar, "UIPanelButtonTemplate")
+    resetBtn:SetSize(90, 22)
+    
+    -- Position: Bottom Right of the skill tree bar
+    resetBtn:SetPoint("BOTTOMRIGHT", _G.skillTreeBottomBar, "BOTTOMRIGHT", -10, 5)
+    resetBtn:SetText("Reset Tree")
+    
+    resetBtn:SetScript("OnClick", function()
+        -- 1. Identify current active loadout for the reset target
+        local currentName = "Default"
+        if _G.skillTreeLoadoutDropdown then
+            currentName = UIDropDownMenu_GetText(_G.skillTreeLoadoutDropdown) or "Default"
+        end
+        
+        -- Resolve ID (using sniffed data from EHTweaks global state)
+        local targetID = knownLoadouts[currentName]
+        if not targetID and activeLoadoutId then targetID = activeLoadoutId end
+        if not targetID then targetID = 0 end 
+        
+        -- 2. Find Start Node for Fail-Safe method
+        local startNodeId = nil
+        if TalentDatabase and TalentDatabase[0] then
+            for _, node in ipairs(TalentDatabase[0].nodes) do
+                if node.isStart then
+                    startNodeId = node.id
+                    break
+                end
+            end
+        end
+    
+        -- 3. Show Confirmation
+        StaticPopupDialogs["EHTWEAKS_RESET_TREE_CONFIRM"] = {
+            text = "Are you sure you want to reset your entire Skill Tree?\n\n|cffFF0000This will unlearn all talents and refund Soul Ashes!|r\n\n(An automatic backup of your current build will be saved)",
+            button1 = "Yes",
+            button2 = "No",
+            OnAccept = function()
+                if ProjectEbonhold and ProjectEbonhold.SendLoadoutToServer and startNodeId then
+                    
+                    -- A. Trigger Auto-Backup (Call to LoadoutManager.lua function)
+                    if EHTweaks_CreateAutoBackup then 
+                        EHTweaks_CreateAutoBackup() 
+                    end
+                    
+                    -- B. Send Reset Payload (Start Node = 1 point)
+                    local loadoutPayload = {
+                        id = targetID, 
+                        name = currentName,
+                        nodeRanks = { [startNodeId] = 1 } 
+                    }
+                    
+                    ProjectEbonhold.SendLoadoutToServer(loadoutPayload)
+                    print("|cff00ff00EHTweaks:|r Resetting tree...")
+                    
+                    -- C. Refresh UI after delay
+                    C_Timer.After(0.5, function()
+                         if ProjectEbonhold.RequestLoadoutFromServer then 
+                             ProjectEbonhold.RequestLoadoutFromServer() 
+                         end
+                    end)
+                else
+                    print("|cffff0000EHTweaks:|r Reset failed. (Missing dependencies or Start Node ID)")
+                end
+            end,
+            timeout = 0,
+            whileDead = true,
+            hideOnEscape = true,
+        }
+        
+        
+        local dialog = StaticPopup_Show("EHTWEAKS_RESET_TREE_CONFIRM")
+        if dialog then
+            dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+            if _G.skillTreeFrame then
+                dialog:SetFrameLevel(_G.skillTreeFrame:GetFrameLevel() + 50)
+            else
+                dialog:SetFrameLevel(200)
+            end
+        end
+    end)
+    
+    resetBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Reset Skill Tree", 1, 1, 1)
+        GameTooltip:AddLine("Refunds all spent Soul Ashes and resets talents.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    resetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- --- LOADOUTS BUTTON ---
+    local loadoutsBtn = CreateFrame("Button", "EHTweaks_LoadoutsButton", _G.skillTreeBottomBar, "UIPanelButtonTemplate")
+    loadoutsBtn:SetSize(90, 22)
+    loadoutsBtn:SetPoint("RIGHT", resetBtn, "LEFT", -5, 0)
+    loadoutsBtn:SetText("Loadouts")
+    
+    loadoutsBtn:SetScript("OnClick", function()
+        if EHTweaks_ToggleLoadoutManager then
+            EHTweaks_ToggleLoadoutManager()
+        else
+            print("|cffff0000EHTweaks:|r Loadout Manager module not loaded.")
+        end
+    end)
+    
+    loadoutsBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Loadout Manager", 1, 1, 1)
+        GameTooltip:AddLine("Save, Load, Import, and Export your talent builds locally.", 0.8, 0.8, 0.8, true)
+        GameTooltip:Show()
+    end)
+    loadoutsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
 -- =========================================================
@@ -1117,7 +1260,9 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_DEAD")
 eventFrame:RegisterEvent("PLAYER_ALIVE")
-eventFrame:SetScript("OnEvent", function(self, event)
+eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+
+eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_ENTERING_WORLD" then
         InitializeDB()
         
@@ -1127,6 +1272,7 @@ eventFrame:SetScript("OnEvent", function(self, event)
             _G.skillTreeFrame:HookScript("OnShow", function()
                 if EHTweaksDB.enableFilters and not filterBox then CreateSkillFilterFrame() end
                 if EHTweaksDB.enableChatLinks then HookSkillTreeButtons() end
+                CreateExtraTreeButtons() -- Create Reset and Save buttons
             end)
         else
             C_Timer.After(1, function()
@@ -1134,6 +1280,7 @@ eventFrame:SetScript("OnEvent", function(self, event)
                     _G.skillTreeFrame:HookScript("OnShow", function()
                         if EHTweaksDB.enableFilters and not filterBox then CreateSkillFilterFrame() end
                         if EHTweaksDB.enableChatLinks then HookSkillTreeButtons() end
+                        CreateExtraTreeButtons() -- Create Reset and Save buttons
                     end)
                 end
             end)
@@ -1191,7 +1338,8 @@ eventFrame:SetScript("OnEvent", function(self, event)
             end
         end)
         
-        self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+        -- Don't unregister PLAYER_ENTERING_WORLD here as we use it for re-inits sometimes
+        -- self:UnregisterEvent("PLAYER_ENTERING_WORLD")
 
     elseif event == "PLAYER_DEAD" then
         -- Check for locked echoes when player dies
@@ -1203,6 +1351,45 @@ eventFrame:SetScript("OnEvent", function(self, event)
             HideWarningFrame()
             EHTweaks_Log("Player is alive, hiding warning")
         end)
+        
+    elseif event == "CHAT_MSG_ADDON" then
+        -- Sniff Loadout Data (hax mon ;p)
+        local prefix, payload, channel, sender = ...
+        if prefix == "AAM0x9" then
+            local opcodeStr, body = payload:match("^(%d+)\t(.*)$")
+            local opcode = tonumber(opcodeStr)
+            
+            -- Opcode 3 = SEND_LOADOUTS
+            if opcode == 3 and body then
+                -- Parse loadout data to capture ID
+                -- Format: GlobalPart_LoadoutsPart
+                local globalPart, loadoutsPart = body:match("([^_]+)_?(.*)")
+                if globalPart then
+                    local selID = globalPart:match("^(%d+),")
+                    if selID then
+                        activeLoadoutId = tonumber(selID)
+                        -- EHTweaks_Log("Sniffed Active Loadout ID: " .. tostring(activeLoadoutId))
+                    end
+                end
+                
+                if loadoutsPart then
+                    for loadoutString in string.gmatch(loadoutsPart, "([^;]+)") do
+                        local parts = {}
+                        for part in string.gmatch(loadoutString, "([^,]+)") do
+                            table.insert(parts, part)
+                        end
+                        if #parts >= 2 then
+                            local id = tonumber(parts[1])
+                            local name = parts[2]
+                            if id and name then
+                                knownLoadouts[name] = id
+                                -- EHTweaks_Log("Sniffed Loadout: " .. name .. " -> " .. id)
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 end)
 

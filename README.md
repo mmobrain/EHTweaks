@@ -2,9 +2,20 @@
 
 **EHTweaks** is a collection of UI enhancements and quality-of-life improvements designed specifically for the Project Ebonhold custom character progression system. 
 
-It extends the default Project Ebonhold interface with searching, filtering, and browsing capabilities to help you plan and manage your classless builds more effectively.
+It extends the default Project Ebonhold interface with searching, filtering, build management, and browsing capabilities to help you plan and manage your classless builds more effectively.
 
 ## Features
+
+### 📋 Loadout Manager (New (and ugly) in alpha 0.0.9)
+*   **Local Build Storage**: Save your Skill Tree builds locally .
+*   **Metadata Support**: Give your builds custom names and multi-line descriptions (perfect for keeping track of build requirements or rotation tips).
+*   **Icon Selector**: Choose a unique icon for every build using a macro-style grid containing every icon found in the Skill Tree database plus generic class icons.
+*   **Auto-Backup**: EHTweaks automatically saves a snapshot of your current build before you perform a Reset or Apply a new loadout (stores up to 2 backups).
+*   **Sharing**: Easily Export or Import builds via compressed text strings to share your creations with other EHTweaks users.
+
+### 🔄 Fail-Safe Tree Reset (New in alpha 0.0.9)
+*   **Reliable Refunds**: Adds a "Reset Tree" button to the bottom bar.
+*   **Logic**: EHTweaks clears your tree by applying a 1-point starter build, ensuring 100% reliability for Soul Ash refunds (this is a workaround for now - you can manually refund the last point).
 
 ### 🔍 Skill Tree Filtering
 *   **Search Box**: Adds a filter input to the Skill Tree window.
@@ -16,7 +27,7 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 
 ![ETH tweaks 1](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/1.gif)
 
-### 📚 Ebonhold Compendium (The Browser / Ebonhold Compendium)
+### 📚 Ebonhold Compendium (The Browser)
 *   **Skill Tree Tab**: A searchable list of every node available in the tree. 
 *   **My Echoes Tab**: View all your collected Perks (Echoes) in one consolidated list.
 *   **Jump-to-Tree**: Clicking a skill in the browser automatically opens the Skill Tree, scrolls to that node, and highlights it with an orange pulsing glow.
@@ -25,15 +36,15 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 
 ![ETH tweaks 2](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/2.gif)
 
-*   **Echoes DB tab**: View all known Perks (Echoes) in one consolidated list.
-*   **Import/Export tab**: You can now share your or apply external data.
+*   **Echoes DB tab**: View all discovered Perks (Echoes) across all your sessions.
+*   **Import/Export tab**: Share your discovered Echoes database with friends or apply external data to complete your compendium.
 
 (alpha 0.0.5)
 
 ![ETH tweaks 4](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/3.gif)
 
 ### 🪄 Smart Tooltips
-*   **Rank Merging**: For skills with multiple ranks, the browser combines values into a single view (e.g., "Deals 10/20/30 damage") so you can see the full progression at a glance.
+*   **Rank Merging**: In the Compendium, skills with multiple ranks combine values into a single view (e.g., "Deals 10/20/30 damage") so you can see the full progression at a glance.
 
 ### 💎 Echoes Filter
 *   Adds a filter bar to the bottom of the **Echoes (Empowerment)** frame to quickly find specific perks in your collection.
@@ -43,7 +54,7 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 ![ETH tweaks 3](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/1.jpg)
 
 ### 🧭 Enhanced Objective Tracker
-*   Integrated the new Objectives system into the Project Ebonhold Soul Ash HUD.
+*   Integrated the custom Objectives system into the Project Ebonhold Soul Ash HUD for better tracking.
 
 ### ↗️ Movable HUD elements
 *   The **"Choose an Echo"** and **"Hide/Show"** buttons are now movable via **Shift+Drag** and share the same saved coordinate.
@@ -67,7 +78,7 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 1. Download the repository.
 2. Extract the folder into your World of Warcraft `Interface/AddOns/` directory.
 3. Ensure the folder is named exactly `EHTweaks`.
-4. Requires the **ProjectEbonhold** core addon to be enabled.
+4. Requires the **ProjectEbonhold** core addon and **LibDeflate** (included in libs) to be enabled.
 
 ## Requirements
 *   **Game Version**: 3.3.5a (Wrath of the Lich King)
@@ -76,8 +87,7 @@ It extends the default Project Ebonhold interface with searching, filtering, and
 ## Credits
 *   **Skulltrail:** Author
 *   **Xurkon:** UI Reskin & Fixes
-*   **MedianAura:** Features - Hide minimap button, display a warning on screen when you die that warn you to check permanent echo before respawning
+*   **MedianAura:** Features - Hide minimap button, Screen warning on death for permanent echoes.
 
 ## License
 This project is released under the [MIT License](LICENSE.md).
-
