@@ -5,6 +5,60 @@
 local addonName, addon = ...
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
+-- [FIX] Ensure EHTweaks.Skin exists
+if not EHTweaks.Skin then EHTweaks.Skin = {} end
+local Skin = EHTweaks.Skin
+
+-- [FIX] Define Fallback Skin functions if they don't exist
+if not Skin.ApplyWindow then
+    Skin.ApplyWindow = function(f, title)
+        f:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8", 
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        })
+        f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+        f:SetBackdropBorderColor(0, 0, 0, 1)
+        
+        if not f.titleBg then
+            local t = f:CreateTexture(nil, "ARTWORK")
+            t:SetTexture("Interface\\Buttons\\WHITE8X8")
+            t:SetVertexColor(0.2, 0.2, 0.2, 1)
+            t:SetHeight(24)
+            t:SetPoint("TOPLEFT", 1, -1)
+            t:SetPoint("TOPRIGHT", -1, -1)
+            f.titleBg = t
+        end
+        
+        if not f.title then
+            f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f.title:SetPoint("TOP", 0, -6)
+            f.title:SetText(title or "")
+        end
+        
+        if not f.closeBtn then
+            local c = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+            c:SetPoint("TOPRIGHT", 0, 0)
+            c:SetScript("OnClick", function() f:Hide() end)
+            f.closeBtn = c
+        end
+    end
+end
+
+if not Skin.ApplyInset then
+    Skin.ApplyInset = function(f)
+        f:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8", 
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        })
+        f:SetBackdropColor(0, 0, 0, 0.3)
+        f:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    end
+end
+
 -- Safer initialization for cross-file communication
 _G.EHTweaks = _G.EHTweaks or addon
 EHTweaks.Loadout = EHTweaks.Loadout or {
@@ -21,7 +75,6 @@ local LM = EHTweaks.Loadout
 local BACKUP_ICON = "Interface\\Icons\\ability_evoker_innatemagic5"
 
 -- --- Localization Warning ---
--- "Scraper" solution Fragility :/
 if GetLocale() ~= "enUS" and GetLocale() ~= "enGB" then
     print("|cffff7f00EHTweaks Warning:|r Current locale is not English. Skill Tree scraping ('3/5' text) may be unreliable.")
 end
@@ -34,8 +87,60 @@ local function EHT_FixStrata(frame)
     end
 end
 
--- --- Helper: Icon Pool Management ---
+-- --- Helper: Skinning (Compendium Style) ---
+local function ApplyCompendiumSkin(f, titleText)
+    -- Sleek Backdrop
+    f:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, tileSize = 0, edgeSize = 1,
+        insets = {left = 0, right = 0, top = 0, bottom = 0},
+    })
+    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    f:SetBackdropBorderColor(0, 0, 0, 1)
 
+    -- Title Background Stripe (ARTWORK layer to fix Z-fighting)
+    if not f.titleBg then
+        local titleBg = f:CreateTexture(nil, "ARTWORK")
+        titleBg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        titleBg:SetVertexColor(0.2, 0.2, 0.2, 1)
+        titleBg:SetHeight(24)
+        titleBg:SetPoint("TOPLEFT", 1, -1)
+        titleBg:SetPoint("TOPRIGHT", -1, -1)
+        f.titleBg = titleBg
+    end
+
+    -- Title Text
+    if not f.title then
+        local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title:SetPoint("TOP", 0, -6)
+        f.title = title
+    end
+    f.title:SetText(titleText)
+    
+    -- Close Button (Generic)
+    if not f.closeBtn then
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", 0, 0)
+        close:SetScript("OnClick", function() f:Hide() end)
+        f.closeBtn = close
+    end
+end
+
+-- --- Helper: Skin Inset Frames (Thin Borders) ---
+local function SkinInset(f)
+    if not f then return end
+    f:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = false, tileSize = 0, edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    f:SetBackdropColor(0, 0, 0, 0.3) -- Darker inner background
+    f:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8) -- Subtle grey border
+end
+
+-- --- Helper: Icon Pool Management ---
 local function GetIconButton(parent, index)
     if not LM.iconPool[index] then
         local b = CreateFrame("Button", nil, parent)
@@ -64,7 +169,6 @@ local function GetIconButton(parent, index)
 end
 
 -- --- Logic: Data Scraping ---
-
 local function GetTreeInfo()
     local nodes = {}
     local iconsFound = {}
@@ -118,7 +222,6 @@ local function GetTreeInfo()
 end
 
 -- --- Logic: Storage ---
-
 local function GetClassLoadoutDB()
     if not EHTweaksDB.loadouts then EHTweaksDB.loadouts = {} end
     local _, class = UnitClass("player")
@@ -132,7 +235,6 @@ local function GetBackupDB()
 end
 
 -- --- UI: Refresh ---
-
 function EHTweaks_RefreshLoadoutList()
     if not LM.managerFrame then return end
     
@@ -192,7 +294,6 @@ function EHTweaks_RefreshLoadoutList()
 end
 
 -- --- UI: Save Dialog ---
-
 local function ShowSaveDialog()
     local nodes, cost, hasPoints, icons = GetTreeInfo()
     if not hasPoints then print("|cffff0000EHTweaks:|r Cannot save an empty tree.") return end
@@ -204,18 +305,12 @@ local function ShowSaveDialog()
         f:SetFrameStrata("TOOLTIP")
         f:SetToplevel(true)
         f:EnableMouse(true) f:SetMovable(true)
-        f:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 32,
-            insets = { left = 11, right = 12, top = 12, bottom = 11 }
-        })
+        
+        -- Apply Compendium Skin & Add Close Button
+        ApplyCompendiumSkin(f, "Save New Build")
+        
         f:SetScript("OnMouseDown", function(self) self:StartMoving() end)
         f:SetScript("OnMouseUp", function(self) self:StopMovingOrSizing() end)
-
-        local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        title:SetPoint("TOP", 0, -20)
-        title:SetText("Save New Build")
 
         local nLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         nLbl:SetPoint("TOPLEFT", 30, -50)
@@ -233,8 +328,7 @@ local function ShowSaveDialog()
         local dBg = CreateFrame("Frame", nil, f)
         dBg:SetSize(340, 80)
         dBg:SetPoint("TOPLEFT", 30, -120)
-        dBg:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8"})
-        dBg:SetBackdropColor(0,0,0,0.5)
+        SkinInset(dBg) -- Apply new inset skin
         
         local dEdit = CreateFrame("EditBox", nil, dBg)
         dEdit:SetMultiLine(true)
@@ -249,6 +343,7 @@ local function ShowSaveDialog()
         local iScroll = CreateFrame("ScrollFrame", "EHT_SaveIconScroll", f, "UIPanelScrollFrameTemplate")
         iScroll:SetSize(310, 160)
         iScroll:SetPoint("TOPLEFT", 30, -230)
+        SkinInset(iScroll) -- Apply new inset skin
         
         local iGrid = CreateFrame("Frame", nil, iScroll)
         iGrid:SetSize(310, 1)
@@ -297,8 +392,62 @@ local function ShowSaveDialog()
     LM.saveFrame:Show()
 end
 
--- --- Logic: Apply ---
+-- --- Logic: Backup ---
+function EHTweaks_CreateAutoBackup()
+    local nodes, cost, hasPoints, icons = GetTreeInfo()
+    if not hasPoints then return end 
+    
+    local db = GetBackupDB()
+    table.insert(db, 1, {
+        name = "Backup " .. date("%H:%M:%S"),
+        desc = "Auto-backup before apply/reset",
+        icon = BACKUP_ICON,
+        cost = cost,
+        nodes = nodes,
+        timestamp = time(),
+        isBackup = true
+    })
+    
+    while #db > LM.MAX_BACKUPS do table.remove(db) end
+    print("|cff888888EHTweaks: Auto-backup created.|r")
+end
 
+-- --- Logic: Override selected loadout with current build ---
+local function OverrideSelectedLoadout()
+    local nodes, cost, hasPoints, icons = GetTreeInfo()
+    if not hasPoints then
+        print("|cffff0000EHTweaks:|r Cannot save an empty tree.")
+        return
+    end
+
+    if not LM.listData or not LM.selectedIndex or LM.selectedIndex == 0 then
+        return
+    end
+
+    local entry = LM.listData[LM.selectedIndex]
+    if not entry or entry.isBackup then
+        return
+    end
+
+    -- Update the existing table in-place
+    entry.nodes     = nodes
+    entry.cost      = cost
+    
+    -- Safe check for icon (icons is a table from GetTreeInfo, entry.icon must be a string)
+    if icons and icons[1] then
+        entry.icon = icons[1]
+    end
+    
+    entry.timestamp = time()
+
+    local name = entry.name or "Unnamed"
+    print("|cff00ff00EHTweaks:|r Loadout '" .. name .. "' overridden with current build.")
+
+    -- Use the correct global function name
+    EHTweaks_RefreshLoadoutList()
+end
+
+-- --- Logic: Apply ---
 local function ApplyLoadout(entry)
     if not entry or not entry.nodes then return end
     EHTweaks_CreateAutoBackup()
@@ -331,29 +480,7 @@ local function ApplyLoadout(entry)
     end
 end
 
--- --- Logic: Backup ---
-
-function EHTweaks_CreateAutoBackup()
-    local nodes, cost, hasPoints, icons = GetTreeInfo()
-    if not hasPoints then return end 
-    
-    local db = GetBackupDB()
-    table.insert(db, 1, {
-        name = "Backup " .. date("%H:%M:%S"),
-        desc = "Auto-backup before apply/reset",
-        icon = BACKUP_ICON,
-        cost = cost,
-        nodes = nodes,
-        timestamp = time(),
-        isBackup = true
-    })
-    
-    while #db > LM.MAX_BACKUPS do table.remove(db) end
-    print("|cff888888EHTweaks: Auto-backup created.|r")
-end
-
 -- --- Logic: Export/Import ---
-
 local function ExportString(entry)
     if not LibDeflate then return "" end
     local nodeStr = ""
@@ -387,7 +514,6 @@ local function ImportString(str)
 end
 
 -- --- UI: Main Manager ---
-
 local function CreateLoadoutManagerFrame()
     local f = CreateFrame("Frame", "EHTweaks_LoadoutManager", UIParent)
     f:SetSize(600, 400)
@@ -395,26 +521,16 @@ local function CreateLoadoutManagerFrame()
     f:SetFrameStrata("FULLSCREEN_DIALOG")
     f:SetToplevel(true)
     f:EnableMouse(true) f:SetMovable(true)
-    f:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 }
-    })
+    
+    Skin.ApplyWindow(f, "Loadout Manager")
+    
     f:SetScript("OnMouseDown", function(self) self:StartMoving() end)
     f:SetScript("OnMouseUp", function(self) self:StopMovingOrSizing() end)
 
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", -5, -5)
-    close:SetScript("OnClick", function() f:Hide() end)
-    
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -15)
-    title:SetText("Loadout Manager")
-    
     local listFrame = CreateFrame("Frame", nil, f)
     listFrame:SetSize(280, 270)
     listFrame:SetPoint("TOPLEFT", 20, -50)
+    Skin.ApplyInset(listFrame)
     
     f.scroll = CreateFrame("ScrollFrame", "EHT_LoadoutScroll", listFrame, "FauxScrollFrameTemplate")
     f.scroll:SetPoint("TOPLEFT", 0, 0)
@@ -445,11 +561,13 @@ local function CreateLoadoutManagerFrame()
     local detailFrame = CreateFrame("Frame", nil, f)
     detailFrame:SetSize(260, 270)
     detailFrame:SetPoint("TOPRIGHT", -20, -50)
+    Skin.ApplyInset(detailFrame)
+    
     f.detailName = detailFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    f.detailName:SetPoint("TOPLEFT", 0, 0)
+    f.detailName:SetPoint("TOPLEFT", 10, -10)
     f.detailDesc = detailFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     f.detailDesc:SetPoint("TOPLEFT", f.detailName, "BOTTOMLEFT", 0, -10)
-    f.detailDesc:SetWidth(260) f.detailDesc:SetJustifyH("LEFT")
+    f.detailDesc:SetWidth(240) f.detailDesc:SetJustifyH("LEFT")
     
     local spacing, bottomY = 10, 22
     
@@ -457,7 +575,58 @@ local function CreateLoadoutManagerFrame()
     btnSaveNew:SetSize(100, 25)
     btnSaveNew:SetPoint("BOTTOMLEFT", 20, bottomY)
     btnSaveNew:SetText("Save Current")
-    btnSaveNew:SetScript("OnClick", ShowSaveDialog)
+    
+    -- [NEW] Quick Save Logic
+    btnSaveNew:SetScript("OnClick", function()
+        -- SHIFT CLICK: Quick Save
+        if IsShiftKeyDown() then
+            local nodes, cost, hasPoints, icons = GetTreeInfo()
+            if not hasPoints then 
+                 print("|cffff0000EHTweaks:|r Cannot save empty tree.") 
+                 return 
+            end
+            
+            local name = "QuickSave " .. date("%H:%M:%S")
+            local db = GetClassLoadoutDB()
+            
+            table.insert(db, 1, { -- Insert at top
+                name = name, 
+                desc = "Quick Shift+Click Save", 
+                icon = icons[1] or "Interface\\Icons\\INV_Misc_QuestionMark", 
+                nodes = nodes, 
+                cost = cost, 
+                timestamp = time() 
+            })
+            
+            print("|cff00ff00EHTweaks:|r Quick Save created: " .. name)
+            EHTweaks_RefreshLoadoutList()
+            return
+        end
+
+        -- Normal Click Logic
+        local selectedIndex = LM.selectedIndex or 0
+        local entry = (LM.listData and selectedIndex > 0) and LM.listData[selectedIndex] or nil
+    
+        if entry and not entry.isBackup then
+            local name = entry.name or "Selected Loadout"
+            local dialog = StaticPopup_Show("EHTWEAKS_SAVELOADOUTMODE", name)
+            if dialog and EHT_FixStrata then
+                EHT_FixStrata(dialog)
+            end
+        else
+            ShowSaveDialog()
+        end
+    end)
+    
+    -- [NEW] Tooltip
+    btnSaveNew:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Save Loadout")
+        GameTooltip:AddLine("Click to open Save Dialog.", 1, 1, 1)
+        GameTooltip:AddLine("Shift+Click to Quick Save.", 0, 1, 0)
+        GameTooltip:Show()
+    end)
+    btnSaveNew:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
     local btnImport = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     btnImport:SetSize(80, 25)
@@ -500,6 +669,22 @@ local function CreateLoadoutManagerFrame()
 end
 
 -- --- Static Popups ---
+StaticPopupDialogs["EHTWEAKS_SAVELOADOUTMODE"] = {
+    text = "You currently have |cff00ff00%s|r selected.\n\n" ..
+           "Do you want to overwrite this loadout with your current build,\n" ..
+           "or create a new loadout?",
+    button1 = "Override",
+    button2 = "Create New",
+    OnAccept = function(self, data)
+        OverrideSelectedLoadout()
+    end,
+    OnCancel = function(self, data)
+        ShowSaveDialog()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
 
 StaticPopupDialogs["EHTWEAKS_DELETE_CONFIRM"] = {
     text = "Delete this loadout forever?", button1 = "Yes", button2 = "No",

@@ -1,16 +1,18 @@
 # EHTweaks
 
-**EHTweaks** is a collection of UI enhancements and quality-of-life improvements designed specifically for the Project Ebonhold custom character progression system. 
+**EHTweaks** is a collection of UI enhancements and quality-of-life improvements designed specifically for the Project Ebonhold custom character progression system.
 
 It extends the default Project Ebonhold interface with searching, filtering, build management, and browsing capabilities to help you plan and manage your classless builds more effectively.
 
 ## Features
 
 ### 📋 Loadout Manager (New (and ugly) in alpha 0.0.9)
-*   **Local Build Storage**: Save your Skill Tree builds locally .
+*   **Local Build Storage**: Save your Skill Tree builds locally.
 *   **Metadata Support**: Give your builds custom names and multi-line descriptions (perfect for keeping track of build requirements or rotation tips).
 *   **Icon Selector**: Choose a unique icon for every build using a macro-style grid containing every icon found in the Skill Tree database plus generic class icons.
 *   **Auto-Backup**: EHTweaks automatically saves a snapshot of your current build before you perform a Reset or Apply a new loadout (stores up to 2 backups).
+*   **Override Selected Loadout**: Override the currently selected Loadout without re-picking it.
+*   **Quick Save**: Shift+Click **Save** to instantly create a backup and override (skips the popup dialog).
 *   **Sharing**: Easily Export or Import builds via compressed text strings to share your creations with other EHTweaks users.
 
 ### 🔄 Fail-Safe Tree Reset (New in alpha 0.0.9)
@@ -22,15 +24,17 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 *   **Smart Search**: Filters by both Ability Name and Description.
 *   **Visual Feedback**: Matching nodes pulse with a green glow, while non-matching nodes are dimmed.
 *   **Node Focus**: Press **Enter** in the search box to automatically jump to and center the first match in the tree.
+*   **Keybind Support**: Skill Tree Open/Close can now be bound in the WoW Key Bindings menu.
 
 (alpha 0.0.1)
 
 ![ETH tweaks 1](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/1.gif)
 
 ### 📚 Ebonhold Compendium (The Browser)
-*   **Skill Tree Tab**: A searchable list of every node available in the tree. 
+*   **Skill Tree Tab**: A searchable list of every node available in the tree.
 *   **My Echoes Tab**: View all your collected Perks (Echoes) in one consolidated list.
 *   **Jump-to-Tree**: Clicking a skill in the browser automatically opens the Skill Tree, scrolls to that node, and highlights it with an orange pulsing glow.
+*   **Echo Favorites**: Right-click an Echo to **Star** it; starred Echoes are pinned to the top.
 
 (alpha 0.0.3)
 
@@ -59,22 +63,23 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 ### ↗️ Movable HUD elements
 *   The **"Choose an Echo"** and **"Hide/Show"** buttons are now movable via **Shift+Drag** and share the same saved coordinate.
 *   The **Soul Ash HUD** (`playerRunFrame`) position is saved across sessions.
+*   **Minimize**: ProjectEbonhold Player Run Frame can be minimized to a thin bar.
 
 (alpha 0.0.5)
 
 ![ETH tweaks 5](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/2.jpg)
 
-
 ## Commands
-
 *   `/eht` - Open the Ebonhold Compendium (Browser).
 *   `/eht reset` - Wipes the internal browser cache (useful if the server updates the tree).
+
+## Keybinds
+*   **Skill Tree Open/Close** - Available in the WoW Key Bindings menu.
 
 ## Other QOL
 *   `Ctrl+Alt+click` - Link Echo or Skill to chat.
 
 ## Installation
-
 1. Download the repository.
 2. Extract the folder into your World of Warcraft `Interface/AddOns/` directory.
 3. Ensure the folder is named exactly `EHTweaks`.

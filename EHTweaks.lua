@@ -3,9 +3,25 @@
 -- Features: Skill Tree Filter, Echoes Filter, Visual Highlights, Focus Zoom, Chat Links, Movable Echo Button, Echoes DB, Starter DB, Objective Tracker, PlayerRunFrame Saver, Minimap Button, Skill Tree Reset Button, Loadout Manager
 
 local addonName, addon = ...
+_G.EHTweaks = _G.EHTweaks or addon
+
+-- Ensure EHTweaks.Skin is accessible
+EHTweaks.Skin = EHTweaks.Skin or {}
+local Skin = EHTweaks.Skin
+
+-- Safety check: If Skin functions are missing (load order issue), define fallbacks locally
+if not Skin.ApplyWindow then
+    Skin.ApplyWindow = function(f) f:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8"}) f:SetBackdropColor(0,0,0,0.8) end
+    Skin.ApplyInset = function(f) f:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8"}) f:SetBackdropColor(0,0,0,0.5) end
+end
 
 -- GLOBAL DEBUG TOGGLE
 EHTweaks_DEBUG = false 
+
+-- Key Binding Strings
+BINDING_HEADER_EHTWEAKS = "EHTweaks"
+BINDING_NAME_EHTWEAKS_TOGGLETREE = "Toggle Skill Tree"
+
 
 function EHTweaks_Log(msg)
     if EHTweaks_DEBUG then
@@ -71,6 +87,20 @@ function EHTweaks_GetActiveLoadoutInfo()
     end
     return activeLoadoutId, name
 end
+
+-- Global function for Keybind
+function EHTweaks_ToggleSkillTree()
+    if _G.skillTreeFrame then
+        if _G.skillTreeFrame:IsShown() then
+            _G.skillTreeFrame:Hide()
+        else
+            _G.skillTreeFrame:Show()
+        end
+    else
+        print("|cffff0000EHTweaks:|r Skill Tree frame not found (is Project Ebonhold loaded?)")
+    end
+end
+
 
 -- =========================================================
 -- HELPER: 3.3.5a Spell Description Scanner
@@ -1399,3 +1429,321 @@ SlashCmdList['EHTWARNING'] = function()
     f.message:SetText('|cff00FF00Locked Echo Detected|r\n\n|cffFFFFFFYou will keep: |cff00FF00Test Echo, Another Echo|r\n\nVerify this is the echo you want to keep.|r')
     f:Show()
 end
+
+-- =============================================================
+-- EHTweaks: Player Run Frame Minimizer (Left Restore Button + Lines)
+-- =============================================================
+
+local miniBarFrame = nil
+local lastRunData = { soulPoints = 0, soulPointsMultiplier = 0 }
+local lastIntData = { intensity = 0 }
+local MAX_INTENSITY = 475
+local INTENSITY_LEVELS = { 75, 200, 275, 375, 475 }
+
+local miniScanner = CreateFrame("GameTooltip", "EHTweaksMiniScanner", nil, "GameTooltipTemplate")
+miniScanner:SetOwner(WorldFrame, "ANCHOR_NONE")
+
+local function GetMiniSpellDesc(spellId)
+    if not spellId then return nil end
+    miniScanner:ClearLines()
+    miniScanner:SetHyperlink("spell:" .. spellId)
+    local lines = miniScanner:NumLines()
+    if lines <= 1 then return nil end
+    
+    local desc = ""
+    for i = 2, lines do
+        local lineObj = _G["EHTweaksMiniScannerTextLeft" .. i]
+        if lineObj then
+            local text = lineObj:GetText()
+            if text then
+                if not string.find(text, "Rank %d") then
+                    if desc ~= "" then desc = desc .. "\n" end
+                    desc = desc .. text
+                end
+            end
+        end
+    end
+    return desc
+end
+
+local function SaveMiniPosition(f)
+    local point, _, relativePoint, x, y = f:GetPoint()
+    EHTweaksDB.miniBarPos = { point, relativePoint, x, y }
+end
+
+local function RestoreMiniPosition(f)
+    if EHTweaksDB.miniBarPos then
+        local p = EHTweaksDB.miniBarPos
+        f:ClearAllPoints()
+        f:SetPoint(p[1], UIParent, p[2], p[3], p[4])
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+end
+
+local function CreateMiniRunBar(mainFrame)
+    if miniBarFrame then return miniBarFrame end
+
+    local f = CreateFrame("Frame", "EHTweaks_MiniRunBar", UIParent)
+    f:SetSize(280, 26) 
+    RestoreMiniPosition(f)
+    
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        SaveMiniPosition(self)
+    end)
+
+    -- [1] Maximize Button (Moved to LEFT)
+    local maxBtn = CreateFrame("Button", nil, f)
+    maxBtn:SetSize(16, 16)
+    maxBtn:SetPoint("LEFT", f, "LEFT", 5, 0) -- Inside Left
+    maxBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
+    maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
+    maxBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+    
+    maxBtn:SetScript("OnClick", function()
+        if mainFrame then
+            EHTweaksDB.runFrameCollapsed = false
+            f:Hide()
+            mainFrame:Show()
+            if ehObjectiveFrame then ehObjectiveFrame:Show() end
+        end
+    end)
+    f.maxBtn = maxBtn -- Store for reference
+
+    -- [2] Icons (To the right of Maximize Button)
+    local reward = CreateFrame("Button", nil, f)
+    reward:SetSize(20, 20)
+    reward:SetPoint("LEFT", maxBtn, "RIGHT", 4, 0) 
+    reward:EnableMouse(true)
+    reward:Hide()
+    f.rewardIcon = reward
+    
+    local curse = CreateFrame("Button", nil, f)
+    curse:SetSize(20, 20)
+    curse:SetPoint("LEFT", reward, "RIGHT", 2, 0) 
+    curse:EnableMouse(true)
+    curse:Hide()
+    f.curseIcon = curse
+
+    -- [3] Progress Bar (Remaining space to Right)
+    local bar = CreateFrame("StatusBar", nil, f)
+    bar:SetPoint("TOP", 0, -2)
+    bar:SetPoint("BOTTOM", 0, 2)
+    
+    -- Anchor Left: 16(btn)+5(pad)+20(icon)+2+20(icon)+2 ~= 65px safe start
+    bar:SetPoint("LEFT", f, "LEFT", 70, 0) 
+    bar:SetPoint("RIGHT", f, "RIGHT", -5, 0) -- Stretch to right edge
+    
+    bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    bar:SetStatusBarColor(0.6, 0.0, 0.8, 0.8)
+    bar:SetMinMaxValues(0, MAX_INTENSITY)
+    bar:SetValue(0)
+    f.bar = bar
+
+    local bg = bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetVertexColor(0, 0, 0, 0.2)
+
+    f:SetBackdrop({
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+        insets = { left = 0, right = 0, top = 0, bottom = 0 }
+    })
+    f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+    
+    -- Red Vertical Lines
+    local function CreateMarkers()
+        local w = bar:GetWidth()
+        if w <= 0 then C_Timer.After(0.5, CreateMarkers) return end
+        
+        if f.markers then return end
+        f.markers = {}
+        
+        for _, thresh in ipairs(INTENSITY_LEVELS) do
+            local ratio = thresh / MAX_INTENSITY
+            local xPos = w * ratio
+            
+            local line = bar:CreateTexture(nil, "OVERLAY")
+            line:SetSize(1, 6) 
+            line:SetPoint("CENTER", bar, "LEFT", xPos, -8) -- Bottom edge area
+            line:SetTexture("Interface\\Buttons\\WHITE8X8")
+            line:SetVertexColor(1, 0, 0, 1) 
+            
+            table.insert(f.markers, line)
+        end
+    end
+    
+    bar:SetScript("OnSizeChanged", function() 
+        if f.markers then 
+             local w = bar:GetWidth()
+             for i, line in ipairs(f.markers) do
+                 local thresh = INTENSITY_LEVELS[i]
+                 if thresh then
+                     local ratio = thresh / MAX_INTENSITY
+                     line:SetPoint("CENTER", bar, "LEFT", w * ratio, -8)
+                 end
+             end
+        else
+            CreateMarkers()
+        end
+    end)
+
+    -- Text (High)
+    f.text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    f.text:SetPoint("CENTER", 0, 4) 
+    f.text:SetText("Loading...")
+    f.text:SetShadowOffset(1, -1)
+    
+    -- Tooltip logic
+    local function ShowTooltip(self)
+        if self.spellId then
+             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+             local name = GetSpellInfo(self.spellId)
+             local desc = GetMiniSpellDesc(self.spellId) 
+             if name then
+                 local color = self.isReward and "|cff44ff44" or "|cffff4444"
+                 local label = self.isReward and "Reward" or "Curse"
+                 GameTooltip:AddLine(color .. label .. "|r: " .. name, 1, 1, 1)
+                 if desc and desc ~= "" then GameTooltip:AddLine(desc, 1, 0.82, 0, true) end
+                 GameTooltip:Show()
+             end
+        end
+    end
+    local function HideTooltip(self) GameTooltip:Hide() end
+    reward:SetScript("OnEnter", ShowTooltip) reward:SetScript("OnLeave", HideTooltip)
+    curse:SetScript("OnEnter", ShowTooltip) curse:SetScript("OnLeave", HideTooltip)
+
+    f:Hide()
+    miniBarFrame = f
+    return f
+end
+
+local function UpdateMiniBarText()
+    if not miniBarFrame then return end
+    
+    local int = lastIntData.intensity or 0
+    local ash = lastRunData.soulPoints or 0
+    local mult = (lastRunData.soulPointsMultiplier or 0) * 100
+    
+    local text = string.format(
+        "Int: |cffffffff%d|r  |  Ash: |cff29C0E6%s|r  |  |cff00ff00+%.0f%%|r",
+        int,
+        FormatLargeNumber and FormatLargeNumber(ash) or ash, 
+        mult
+    )
+    miniBarFrame.text:SetText(text)
+    
+    if miniBarFrame.bar then
+        miniBarFrame.bar:SetValue(int)
+        if int >= 475 then miniBarFrame.bar:SetStatusBarColor(1, 0, 0)
+        else miniBarFrame.bar:SetStatusBarColor(0.6, 0.0, 0.8) end
+    end
+end
+
+local function SyncMiniTracker()
+    if not miniBarFrame then return end
+    
+    if ehObjectiveFrame and ehObjectiveFrame.objectiveData then
+         local obj = ehObjectiveFrame.objectiveData
+         local hasReward = (obj.bonusSpellId and obj.bonusSpellId > 0)
+         local hasCurse = (obj.malusSpellId and obj.malusSpellId > 0)
+
+         if hasReward then
+             local _, _, icon = GetSpellInfo(obj.bonusSpellId)
+             miniBarFrame.rewardIcon:SetNormalTexture(icon) 
+             miniBarFrame.rewardIcon.spellId = obj.bonusSpellId 
+             miniBarFrame.rewardIcon.isReward = true 
+             miniBarFrame.rewardIcon:Show()
+         else
+             miniBarFrame.rewardIcon:Hide()
+         end
+         
+         if hasCurse then
+             local _, _, icon = GetSpellInfo(obj.malusSpellId)
+             miniBarFrame.curseIcon:SetNormalTexture(icon)
+             miniBarFrame.curseIcon.spellId = obj.malusSpellId 
+             miniBarFrame.curseIcon.isReward = false 
+             miniBarFrame.curseIcon:Show()
+             
+             if not hasReward then
+                 miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.maxBtn, "RIGHT", 4, 0)
+             else
+                 miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.rewardIcon, "RIGHT", 2, 0)
+             end
+         else
+             miniBarFrame.curseIcon:Hide()
+         end
+    else
+         miniBarFrame.rewardIcon:Hide()
+         miniBarFrame.curseIcon:Hide()
+    end
+end
+
+local function InitMinimizer(numTries)
+    if numTries > 30 then return end 
+
+    local mainFrame = _G.ProjectEbonholdPlayerRunFrame
+    if not mainFrame then
+        C_Timer.After(1, function() InitMinimizer(numTries + 1) end)
+        return
+    end
+
+    local mini = CreateMiniRunBar(mainFrame)
+
+    if not mainFrame.ehtMinimizeBtn then
+        local minBtn = CreateFrame("Button", nil, mainFrame)
+        minBtn:SetSize(20, 20)
+        
+        -- [FIX] Button Position: TOPLEFT, 15, 0
+        minBtn:SetPoint("TOPLEFT", mainFrame, "TOPLEFT", 15, 0) 
+        
+        minBtn:SetFrameLevel(mainFrame:GetFrameLevel() + 20)
+        
+        minBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Up")
+        minBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-SmallerButton-Down")
+        minBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+        
+        minBtn:SetScript("OnClick", function()
+            EHTweaksDB.runFrameCollapsed = true
+            RestoreMiniPosition(mini)
+            
+            mainFrame:Hide()
+            if ehObjectiveFrame then ehObjectiveFrame:Hide() end
+            
+            mini:Show()
+            UpdateMiniBarText()
+            SyncMiniTracker()
+        end)
+        
+        mainFrame.ehtMinimizeBtn = minBtn
+    end
+
+    if ProjectEbonhold and ProjectEbonhold.PlayerRunUI then
+        hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateData", function(data)
+            if data then for k,v in pairs(data) do lastRunData[k] = v end UpdateMiniBarText() end
+        end)
+        hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateIntensity", function(data)
+            if data then for k,v in pairs(data) do lastIntData[k] = v end UpdateMiniBarText() end
+        end)
+    end
+    
+    C_Timer.NewTicker(1, SyncMiniTracker)
+
+    if EHTweaksDB.runFrameCollapsed then
+        mainFrame:Hide()
+        if ehObjectiveFrame then ehObjectiveFrame:Hide() end
+        mini:Show()
+    end
+end
+
+local loader = CreateFrame("Frame")
+loader:RegisterEvent("PLAYER_ENTERING_WORLD")
+loader:SetScript("OnEvent", function() 
+    InitMinimizer(0) 
+end)

@@ -5,6 +5,53 @@
 local addonName, addon = ...
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
+-- [FIX] Ensure global Skin table exists to prevent errors if loading order varies
+if not EHTweaks.Skin then EHTweaks.Skin = {} end
+local Skin = EHTweaks.Skin
+
+-- If Skin module isn't loaded yet (fallback for testing)
+if not Skin.ApplyWindow then
+    Skin.ApplyWindow = function(f, title)
+        f:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        })
+        f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+        f:SetBackdropBorderColor(0, 0, 0, 1)
+        if not f.titleBg then
+            local t = f:CreateTexture(nil, "ARTWORK")
+            t:SetTexture("Interface\\Buttons\\WHITE8X8")
+            t:SetVertexColor(0.2, 0.2, 0.2, 1)
+            t:SetHeight(24)
+            t:SetPoint("TOPLEFT", 1, -1)
+            t:SetPoint("TOPRIGHT", -1, -1)
+            f.titleBg = t
+        end
+        if not f.title then
+            f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f.title:SetPoint("TOP", 0, -6)
+        end
+        f.title:SetText(title or "")
+        if not f.closeBtn then
+            local c = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+            c:SetPoint("TOPRIGHT", 0, 0)
+            c:SetScript("OnClick", function() f:Hide() end)
+            f.closeBtn = c
+        end
+    end
+end
+if not Skin.ApplyInset then
+    Skin.ApplyInset = function(f)
+        f:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = {left = 0, right = 0, top = 0, bottom = 0},
+        })
+        f:SetBackdropColor(0, 0, 0, 0.3)
+        f:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    end
+end
 
 -- --- Configuration ---
 local ROW_HEIGHT = 44
@@ -196,7 +243,6 @@ local function BuildPerkData()
     return data
 end
 
-
 local function BuildHistoryData()
     local data = {}
     local groups = {} -- name -> { highestQ, qualities = {q -> id}, icon }
@@ -214,7 +260,9 @@ local function BuildHistoryData()
                     }
                 end
                 
-                local q = math.abs(info.quality or 0)
+                -- [FIX] Ensure absolute value for quality to prevent -0 or negative numbers
+                local q = math.abs(tonumber(info.quality) or 0)
+                
                 groups[name].qualities[q] = spellId
                 
                 if q > groups[name].highestQ then
@@ -226,74 +274,85 @@ local function BuildHistoryData()
     end
     
     for name, group in pairs(groups) do
+        local mainID = group.qualities[group.highestQ]
+        local fav = false
+        if EHTweaksDB.favorites and EHTweaksDB.favorites[mainID] then
+            fav = true
+        end
+
         table.insert(data, {
             isPerk = true,
             isHistory = true,
             name = name,
             icon = group.icon,
-            spellId = group.qualities[group.highestQ], -- Use highest quality ID for main display/tooltip
+            spellId = mainID, 
             quality = group.highestQ,
-            qualityMap = group.qualities -- For pips
+            qualityMap = group.qualities, 
+            isFavorite = fav
         })
     end
 
     table.sort(data, function(a, b) 
+        if a.isFavorite ~= b.isFavorite then return a.isFavorite end
         if a.quality ~= b.quality then return a.quality > b.quality end
         return a.name < b.name 
     end)
     return data
 end
 
-local function RefreshData()
-    if activeTab == 1 then
-        browserData = BuildTreeData()
-    elseif activeTab == 2 then
-        browserData = BuildPerkData()
-    elseif activeTab == 3 then
-        browserData = BuildHistoryData()
-    else
-        browserData = {}
-    end
-    
+local function ApplyFilter()
     local text = (browserFrame and browserFrame.searchBox and browserFrame.searchBox:GetText()) or ""
+    
+    -- Recycle the table instead of creating a new one
+    wipe(filteredData)
+
     if text == "" then
-        filteredData = browserData
+        -- Fast path: just copy references
+        for _, v in ipairs(browserData) do table.insert(filteredData, v) end
     else
         text = string.lower(text)
-        local res = {}
         for _, entry in ipairs(browserData) do
+            -- Name match
             if string.find(string.lower(entry.name), text, 1, true) then
-                table.insert(res, entry)
+                table.insert(filteredData, entry)
             else
-                local desc = GetRichDescription(entry)
+                -- Description match (using existing GetRichDescription if available)
+                local desc = nil
+                if GetRichDescription then 
+                    desc = GetRichDescription(entry) 
+                end
+                
                 if desc and string.find(string.lower(desc), text, 1, true) then
-                    table.insert(res, entry)
+                    table.insert(filteredData, entry)
                 end
             end
         end
-        filteredData = res
+    end
+end
+
+local function RefreshData()
+    if activeTab == 1 then
+        browserData = BuildTreeData() 
+    elseif activeTab == 2 then
+        browserData = BuildPerkData() 
+    elseif activeTab == 3 then
+        browserData = BuildHistoryData() 
+    else
+        wipe(browserData)
     end
     
-    -- --- Update Status Text ---
+    ApplyFilter()
+    
+    -- Update Count Labels
     if browserFrame and browserFrame.countLabel then
-        local treeC = #BuildTreeData()
-        local myC = #BuildPerkData()
-        local dbC = #BuildHistoryData()
-
-        if activeTab == 1 then
-             browserFrame.countLabel:SetText("Total Skills: |cffFFD700" .. treeC .. "|r")
-        elseif activeTab == 2 then
-             browserFrame.countLabel:SetText("My Echoes: |cff00FF00" .. myC .. "|r")
-        elseif activeTab == 3 then
-             browserFrame.countLabel:SetText("Total Entries: |cff0070DD" .. dbC .. "|r")
-        else
-             browserFrame.countLabel:SetText("")
-        end
+        local count = #filteredData
+        local total = #browserData
+        local color = "|cffffffff"
+        if activeTab == 1 then color = "|cffFFD700" end
+        if activeTab == 2 then color = "|cff00FF00" end
+        if activeTab == 3 then color = "|cff0070DD" end
         
-        -- Reset Tabs to static text
-        browserFrame.tabs[1]:SetText("Skills")
-        browserFrame.tabs[2]:SetText("My Echoes")
-        browserFrame.tabs[3]:SetText("Echoes DB")
+        browserFrame.countLabel:SetText(string.format("%sItems: %d / %d|r", color, count, total))
     end
     
     isDataDirty = false
@@ -316,15 +375,12 @@ function EHTweaks_ExportEchoes()
     EHTweaks_Log("--- Exporting Echoes ---")
     for spellId, info in pairs(EHTweaksDB.seenEchoes) do        
         local quality = math.abs(info.quality or 0)
-        
         table.insert(exportTable, { spellId, quality }) 
-        EHTweaks_Log(string.format("Pack: ID=%d, Q=%d, Name=%s", spellId, quality, tostring(info.name)))
         count = count + 1
     end
     EHTweaks_Log("Total items to export: " .. count)
     
-    -- Manual Serialization (simple string concat for 3.3.5 stability vs AceSerializer)
-    -- Format: id:q,id:q,id:q
+    -- Manual Serialization: id:q,id:q
     local parts = {}
     for _, entry in ipairs(exportTable) do
         table.insert(parts, entry[1] .. ":" .. entry[2])
@@ -363,21 +419,29 @@ function EHTweaks_ImportEchoes(code)
         return 0, "Decompression Failed" 
     end
     
-    EHTweaks_Log("Raw String Length: " .. string.len(rawString))
+    -- DEBUG: Inspect the raw string format
+    local safeLog = rawString:sub(1, 100) 
+    EHTweaks_Log("DEBUG Raw String Sample: " .. safeLog) 
+    EHTweaks_Log("DEBUG Raw String Length: " .. string.len(rawString))
     
-    -- Deserialize (simple split)
-    local imported = 0
+    -- Deserialize
+    local imported = 0   -- Count of NEW or UPGRADED items
+    local totalSeen = 0  -- Count of VALID items parsed
     if not EHTweaksDB.seenEchoes then EHTweaksDB.seenEchoes = {} end
     
+    local loopCount = 0
     for entryStr in string.gmatch(rawString, "([^,]+)") do
-        -- FIX: Regex updated to accept optional negative sign (-?%d+) to handle legacy -0 imports
-        local idStr, qStr = string.match(entryStr, "(%d+):(-?%d+)")
+        loopCount = loopCount + 1
+        
+        local idStr, qStr = string.match(entryStr, "^(%d+):(-?%d+)$")
+        
         if idStr and qStr then
+            totalSeen = totalSeen + 1
             local spellId = tonumber(idStr)
             local quality = tonumber(qStr)
-            quality = math.abs(quality) -- Normalize just in case
+            quality = math.abs(quality) 
             
-            -- Validate Spell Exists locally
+            -- Validate Spell Exists
             local name, _, icon = GetSpellInfo(spellId)
             if name then
                 if not EHTweaksDB.seenEchoes[spellId] then
@@ -387,66 +451,55 @@ function EHTweaks_ImportEchoes(code)
                         quality = quality
                     }
                     imported = imported + 1
-                    EHTweaks_Log("Imported NEW: " .. name .. " (" .. spellId .. ") Q=" .. quality)
                 else
                     -- Merge strategy: Keep highest quality
                     local oldQ = math.abs(EHTweaksDB.seenEchoes[spellId].quality or 0)
                     if quality > oldQ then
                         EHTweaksDB.seenEchoes[spellId].quality = quality
-                        imported = imported + 1 -- Count quality upgrade as import
-                        EHTweaks_Log("Imported UPGRADE: " .. name .. " (" .. spellId .. ") Q=" .. oldQ .. "->" .. quality)
-                    else
-                        -- EHTweaks_Log("Skipped (Existing Better/Equal): " .. name .. " (" .. spellId .. ")")
+                        imported = imported + 1 
                     end
                 end
-            else
-                EHTweaks_Log("Skipped (Unknown SpellID): " .. spellId)
             end
         else
-            EHTweaks_Log("Skipped (Malformed Entry): " .. tostring(entryStr))
+            -- Debug failed parse only
+             if loopCount <= 3 then EHTweaks_Log("DEBUG Failed Parse: '" .. tostring(entryStr) .. "'") end
         end
     end
     
-    EHTweaks_Log("Import Finished. Total processed: " .. imported)
+    EHTweaks_Log("Loop Iterations: " .. loopCount)
+    EHTweaks_Log("Valid Items Parsed: " .. totalSeen)
+    EHTweaks_Log("New/Upgraded Items: " .. imported)
+    
+    -- Logic Fix: If we saw valid items but imported 0, it means everything was duplicate/lower quality.
+    -- This is a SUCCESSFUL merge, not a failure.
+    if imported == 0 and totalSeen > 0 then
+        return 0, "No new data (Database already up-to-date)"
+    elseif totalSeen == 0 then
+         return 0, "Format Error (Parsed 0 valid items)"
+    end
+    
     return imported
 end
 
 -- --- UI Logic ---
 
 local function UpdateScroll()
-    if not browserFrame then return end 
-
-    if activeTab >= 4 then -- Settings or Import/Export
-        -- Hide List UI components
+    if not browserFrame then return end
+    
+    if activeTab >= 4 then 
         if browserFrame.scroll then browserFrame.scroll:Hide() end
         if browserFrame.searchBox then browserFrame.searchBox:Hide() end
         if browserFrame.searchLabel then browserFrame.searchLabel:Hide() end
-        
-        -- HIDE ALL ROWS
-        if browserFrame.rows then
-            for _, row in ipairs(browserFrame.rows) do
-                row:Hide()
-            end
-        end
-        
-        -- Hide Count Label
-        if browserFrame.countLabel then browserFrame.countLabel:SetText("") end
-        
-        -- Toggle Frames
-        if activeTab == 4 then
-            if browserFrame.settingsFrame then browserFrame.settingsFrame:Show() end
-            if browserFrame.importFrame then browserFrame.importFrame:Hide() end
-        else
-            if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
-            if browserFrame.importFrame then browserFrame.importFrame:Show() end
-        end
+        if browserFrame.listContainer then browserFrame.listContainer:Hide() end
+        if browserFrame.rows then for _, r in ipairs(browserFrame.rows) do r:Hide() end end
+        if browserFrame.settingsFrame then if activeTab == 4 then browserFrame.settingsFrame:Show() else browserFrame.settingsFrame:Hide() end end
+        if browserFrame.importFrame then if activeTab == 5 then browserFrame.importFrame:Show() else browserFrame.importFrame:Hide() end end
         return
     else
-        -- Show List UI
         if browserFrame.scroll then browserFrame.scroll:Show() end
         if browserFrame.searchBox then browserFrame.searchBox:Show() end
         if browserFrame.searchLabel then browserFrame.searchLabel:Show() end
-        
+        if browserFrame.listContainer then browserFrame.listContainer:Show() end
         if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
         if browserFrame.importFrame then browserFrame.importFrame:Hide() end
     end
@@ -464,12 +517,29 @@ local function UpdateScroll()
             row:Hide()
         else
             local index = offset + i
-            
             if index <= numItems then
                 local data = filteredData[index]
                 row.data = data
                 
                 row.icon:SetTexture(data.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                
+                -- [POLISH] Favorites Styling
+                if data.isFavorite then
+                    -- Show Gem Icon
+                    row.favMark:Show()
+                    
+                    -- Anchor cost text to the LEFT of the Gem to prevent overlap
+                    row.cost:SetPoint("RIGHT", row.favMark, "LEFT", -5, 0)
+                    
+                    -- Goldish/Greenish Background                    
+			  row.bg:SetVertexColor(0.1, 0.4, 0.0, 0.4)
+                else
+                    row.favMark:Hide()
+                    -- Reset anchor if no gem
+                    row.cost:SetPoint("RIGHT", -10, 0)
+                    -- Transparent background
+                    row.bg:SetVertexColor(0, 0, 0, 0)
+                end
                 
                 if data.isPerk then
                     local color = QUALITY_COLORS[data.quality] or QUALITY_COLORS[0]
@@ -477,19 +547,16 @@ local function UpdateScroll()
                     row.name:SetTextColor(color.r, color.g, color.b)
                     
                     if data.isHistory then
-                        -- Render C U R E L pips
                         local pips = ""
                         local map = data.qualityMap or {}
-                        
-                        if map[0] then pips = pips .. "|cffffffffC|r " else pips = pips .. "|cff555555C|r " end
-                        if map[1] then pips = pips .. "|cff1eff00U|r " else pips = pips .. "|cff555555U|r " end
-                        if map[2] then pips = pips .. "|cff0070ddR|r " else pips = pips .. "|cff555555R|r " end
-                        if map[3] then pips = pips .. "|cffa335eeE|r " else pips = pips .. "|cff555555E|r " end
-                        if map[4] then pips = pips .. "|cffff8000L|r"  else pips = pips .. "|cff555555L|r"  end
-                        
+                        -- Pips: Common, Uncommon, Rare, Epic, Legendary
+                        local chars = {"C","U","R","E","L"}
+                        local colors = {"ffffffff", "ff1eff00", "ff0070dd", "ffa335ee", "ffff8000"}
+                        for q=0,4 do
+                            if map[q] then pips = pips.."|c"..colors[q+1]..chars[q+1].."|r " 
+                            else pips = pips.."|cff555555"..chars[q+1].."|r " end
+                        end
                         row.cost:SetText(pips)
-                        
-                        -- Type text is Rarity Name (e.g. "Rare") based on highest discovered
                         local hName = QUALITY_COLORS[data.quality] and QUALITY_COLORS[data.quality].name or "Unknown"
                         row.typeText:SetText(hName)
                         row.typeText:SetTextColor(color.r, color.g, color.b)
@@ -501,7 +568,6 @@ local function UpdateScroll()
                 else
                     row.name:SetText(data.name)
                     row.name:SetTextColor(1, 1, 1)
-                    
                     if data.isChoice then
                         row.cost:SetText("|cffFFD700" .. data.cost .. "|r SP")
                         row.typeText:SetText("Choice")
@@ -519,22 +585,20 @@ local function UpdateScroll()
                         end
                     end
                 end
-                
                 row:Show()
             else
                 row:Hide()
             end
         end
     end
-    
     FauxScrollFrame_Update(browserFrame.scroll, numItems, maxRows, ROW_HEIGHT)
 end
+
 
 local function SetTab(id)
     activeTab = id
     isDataDirty = true
     if browserFrame then
-        -- Manual Tab Switching Logic
         for k, t in ipairs(browserFrame.tabs) do
             if k == id then
                  t.bg:SetVertexColor(0.3, 0.3, 0.3, 1)
@@ -542,125 +606,48 @@ local function SetTab(id)
                  t.bg:SetVertexColor(0.15, 0.15, 0.15, 1)
             end
         end
-        
         if browserFrame.searchBox then browserFrame.searchBox:SetText("") end
     end
     UpdateScroll()
 end
 
+-- --- UI: Browser Frame ---
 local function CreateBrowserFrame()
     if browserFrame then return browserFrame end
 
     local f = CreateFrame("Frame", "EHTweaks_BrowserFrame", UIParent)
     f:SetSize(600, 520)
-    f:SetMinResize(600, 400)
     f:SetPoint("CENTER")
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
-    f:SetResizable(true)
     f:EnableMouse(true)
+    f:SetResizable(true)
+    f:SetMinResize(600, 400)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     
-    -- Sleek Backdrop
-    f:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            tile = false, tileSize = 0, edgeSize = 1,
-            insets = {left = 0, right = 0, top = 0, bottom = 0},
-    })
-    f:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    f:SetBackdropBorderColor(0, 0, 0, 1)
-    
+    Skin.ApplyWindow(f, BROWSER_TITLE)
     browserFrame = f
     
-    -- Title Background Stripe
-    local titleBg = f:CreateTexture(nil, "BACKGROUND")
-    titleBg:SetTexture("Interface\\Buttons\\WHITE8X8")
-    titleBg:SetVertexColor(0.2, 0.2, 0.2, 1)
-    titleBg:SetHeight(24)
-    titleBg:SetPoint("TOPLEFT", 1, -1)
-    titleBg:SetPoint("TOPRIGHT", -1, -1)
-    
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOP", 0, -6)
-    title:SetText(BROWSER_TITLE)
-    
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", 0, 0)
-    close:SetSize(24, 24)
-    
-    -- Status Text (Counts) - Top Left
     local countLbl = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     countLbl:SetPoint("TOPLEFT", 10, -7)
-    countLbl:SetText("")
     f.countLabel = countLbl
 
-    -- TABS (Bottom Navigation Style)
-    f.numTabs = 5
-    f.tabs = {}
-    
-    local function CreateNavTab(id, text, x)
-        local tab = CreateFrame("Button", "$parentTab"..id, f)
-        tab:SetID(id)
-        tab:SetText(text)
-        tab:SetSize(110, 26)
-        
-        -- Style
-        tab:SetNormalFontObject("GameFontNormalSmall")
-        tab:SetHighlightFontObject("GameFontHighlightSmall")
-        
-        local bg = tab:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-        bg:SetVertexColor(0.15, 0.15, 0.15, 1)
-        tab.bg = bg
-        
-        tab:SetScript("OnEnter", function(self) self.bg:SetVertexColor(0.25, 0.25, 0.25, 1) end)
-        tab:SetScript("OnLeave", function(self) 
-             if activeTab ~= self:GetID() then
-                 self.bg:SetVertexColor(0.15, 0.15, 0.15, 1) 
-             else
-                 self.bg:SetVertexColor(0.3, 0.3, 0.3, 1)
-             end
-        end)
-        tab:SetScript("OnClick", function() SetTab(id) end)
-        
-        return tab
-    end
-    
-    local tab1 = CreateNavTab(1, "Skills", 0)
-    tab1:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 5)
-    f.tabs[1] = tab1
-    
-    local tab2 = CreateNavTab(2, "My Echoes", 0)
-    tab2:SetPoint("LEFT", tab1, "RIGHT", 2, 0)
-    f.tabs[2] = tab2
-    
-    local tab3 = CreateNavTab(3, "Echoes DB", 0)
-    tab3:SetPoint("LEFT", tab2, "RIGHT", 2, 0)
-    f.tabs[3] = tab3
-    
-    local tab4 = CreateNavTab(4, "Settings", 0)
-    tab4:SetPoint("LEFT", tab3, "RIGHT", 2, 0)
-    f.tabs[4] = tab4
-    
-    local tab5 = CreateNavTab(5, "Import", 0)
-    tab5:SetPoint("LEFT", tab4, "RIGHT", 2, 0)
-    f.tabs[5] = tab5
-    
-    -- Initialize Tab State
-    -- Initialize Tab State (Moved to end)
-
-    -- Search
     local sb = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
     sb:SetSize(200, 20)
     sb:SetPoint("TOPRIGHT", -30, -32)
     sb:SetAutoFocus(false)
-    sb:SetScript("OnTextChanged", function(self)
-        RefreshData()
-        UpdateScroll()
+    sb:SetScript("OnTextChanged", function(self) self.updateDelay = 0.3 end)
+    sb:SetScript("OnUpdate", function(self, elapsed)
+        if self.updateDelay then
+            self.updateDelay = self.updateDelay - elapsed
+            if self.updateDelay <= 0 then
+                self.updateDelay = nil
+                ApplyFilter()
+                UpdateScroll()
+            end
+        end
     end)
     f.searchBox = sb
     
@@ -669,7 +656,6 @@ local function CreateBrowserFrame()
     sbLabel:SetText("Filter:")
     f.searchLabel = sbLabel
     
-    -- Clear Button for Browser Search
     local clearBtn = CreateFrame("Button", nil, sb)
     clearBtn:SetSize(14, 14)
     clearBtn:SetPoint("RIGHT", sb, "RIGHT", -4, 0)
@@ -680,20 +666,24 @@ local function CreateBrowserFrame()
     clearBtn:SetScript("OnClick", function()
         sb:SetText("")
         sb:ClearFocus()
-        RefreshData()
+        ApplyFilter()
         UpdateScroll()
     end)
-    
-    -- Scroll Frame
-    local sf = CreateFrame("ScrollFrame", "EHTweaks_BrowserScroll", f, "FauxScrollFrameTemplate")
-    sf:SetPoint("TOPLEFT", 10, -70)
-    sf:SetPoint("BOTTOMRIGHT", -30, 30)
+
+    local listContainer = CreateFrame("Frame", nil, f)
+    listContainer:SetPoint("TOPLEFT", 10, -60)
+    listContainer:SetPoint("BOTTOMRIGHT", -10, 40)
+    Skin.ApplyInset(listContainer)
+    f.listContainer = listContainer
+
+    local sf = CreateFrame("ScrollFrame", "EHTweaks_BrowserScroll", listContainer, "FauxScrollFrameTemplate")
+    sf:SetPoint("TOPLEFT", 0, -2)
+    sf:SetPoint("BOTTOMRIGHT", -26, 2)
     sf:SetScript("OnVerticalScroll", function(self, offset)
         FauxScrollFrame_OnVerticalScroll(self, offset, ROW_HEIGHT, UpdateScroll)
     end)
     f.scroll = sf
     
-    -- Resize Handle
     local resize = CreateFrame("Button", nil, f)
     resize:SetSize(16, 16)
     resize:SetPoint("BOTTOMRIGHT")
@@ -704,10 +694,45 @@ local function CreateBrowserFrame()
     resize:SetScript("OnMouseUp", function() f:StopMovingOrSizing() end)
     f.resizeBtn = resize
 
-    -- Dynamic Row Creator
-    f.CreateRows = function(self)
+    f.tabs = {}
+    local function CreateNavTab(id, text)
+        local tab = CreateFrame("Button", "$parentTab"..id, f)
+        tab:SetID(id)
+        tab:SetText(text)
+        tab:SetSize(110, 26)
+        tab:SetNormalFontObject("GameFontNormalSmall")
+        tab:SetHighlightFontObject("GameFontHighlightSmall")
+        local bg = tab:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        bg:SetVertexColor(0.15, 0.15, 0.15, 1)
+        tab.bg = bg
+        tab:SetScript("OnEnter", function(self) self.bg:SetVertexColor(0.25, 0.25, 0.25, 1) end)
+        tab:SetScript("OnLeave", function(self) 
+             if activeTab ~= self:GetID() then self.bg:SetVertexColor(0.15, 0.15, 0.15, 1) 
+             else self.bg:SetVertexColor(0.3, 0.3, 0.3, 1) end
+        end)
+        tab:SetScript("OnClick", function() SetTab(id) end)
+        return tab
+    end
+    
+    local tabNames = {"Skills", "My Echoes", "Echoes DB", "Settings", "Import/DB"}
+    local prevTab
+    for i, name in ipairs(tabNames) do
+        local t = CreateNavTab(i, name)
+        if i == 1 then
+            t:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 5)
+        else
+            t:SetPoint("LEFT", prevTab, "RIGHT", 2, 0)
+        end
+        f.tabs[i] = t
+        prevTab = t
+    end
+
+    -- [UPDATED] CreateRows with Favorites, Tooltips, and Click Logic
+     f.CreateRows = function(self)
         local h = self:GetHeight()
-        local availableH = h - 90 -- Top + Bottom padding
+        local availableH = h - 90 
         local count = math.floor(availableH / ROW_HEIGHT)
         if count < MIN_ROWS then count = MIN_ROWS end
         self.maxRows = count
@@ -716,10 +741,17 @@ local function CreateBrowserFrame()
         
         for i = 1, count do
             if not self.rows[i] then
-                local row = CreateFrame("Button", nil, f)
+                local row = CreateFrame("Button", nil, listContainer)
                 row:SetSize(424, ROW_HEIGHT)
-                -- We set points dynamically in UpdateLayout
+                row:RegisterForClicks("AnyUp") 
                 
+                -- Row Background (for highlighting favorites)
+                local bg = row:CreateTexture(nil, "BACKGROUND")
+                bg:SetAllPoints()
+                bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+                bg:SetVertexColor(0, 0, 0, 0) -- Invisible by default
+                row.bg = bg
+
                 local hl = row:CreateTexture(nil, "HIGHLIGHT")
                 hl:SetAllPoints()
                 hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
@@ -740,9 +772,20 @@ local function CreateBrowserFrame()
                 typeText:SetJustifyH("LEFT")
                 row.typeText = typeText
                 
+                -- [NEW] Favorite Marker (Gem Icon)
+                local favMark = row:CreateTexture(nil, "OVERLAY")
+                favMark:SetSize(14, 14)
+                -- Positioned to the right, but we will anchor 'cost' to it
+                favMark:SetPoint("RIGHT", -10, 0) 
+                favMark:SetTexture("Interface\\Icons\\inv_misc_gem_02")
+                favMark:Hide()
+                row.favMark = favMark
+
+                -- [UPDATE] Cost/Pips anchored to the left of the Gem
                 local cost = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                cost:SetPoint("RIGHT", -10, 0)
+                cost:SetPoint("RIGHT", favMark, "LEFT", -5, 0)
                 row.cost = cost
+                               
                 
                 row:SetScript("OnEnter", function(self)
                     if not self.data then return end
@@ -759,24 +802,25 @@ local function CreateBrowserFrame()
                                 if sID then
                                     local qColor = QUALITY_COLORS[q]
                                     local qName = qColor.name or "Unknown"
-                                    local desc = utils.GetSpellDescription(sID, 999, 1)
+                                    local desc = utils and utils.GetSpellDescription(sID, 999, 1) or "No Description"
                                     GameTooltip:AddLine(qName, qColor.r, qColor.g, qColor.b)
                                     GameTooltip:AddLine(desc, 1, 0.82, 0, true)
                                     GameTooltip:AddLine(" ")
                                 end
                             end
+                            GameTooltip:AddLine("Right-Click to Toggle Favorite", 1, 0.82, 0)
                         else
-                            local c = QUALITY_COLORS[self.data.quality]
+                            local c = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
                             GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
-                            local desc = GetRichDescription(self.data)
+                            local desc = GetRichDescription and GetRichDescription(self.data)
                             if desc then GameTooltip:AddLine(desc, 1, 0.82, 0, true) end
                             GameTooltip:AddLine(" ")
-                            GameTooltip:AddLine("Current Stack: " .. self.data.stack, 1, 1, 1)
+                            GameTooltip:AddLine("Current Stack: " .. (self.data.stack or 1), 1, 1, 1)
                         end
                     else
                         GameTooltip:AddLine(self.data.name, 1, 1, 1)
                         for i, spellId in ipairs(self.data.ranks or {}) do
-                            local d = utils.GetSpellDescription(spellId, 999, 1)
+                            local d = utils and utils.GetSpellDescription(spellId, 999, 1) or ""
                             GameTooltip:AddLine("Rank " .. i .. ": " .. d, 0.8, 0.8, 0.8, true)
                         end
                         GameTooltip:AddLine(" ")
@@ -787,21 +831,63 @@ local function CreateBrowserFrame()
                 end)
                 row:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 
-                row:SetScript("OnClick", function(self)
+                row:SetScript("OnClick", function(self, button)
                     if not self.data then return end
-                    if EHTweaks_HandleLinkClick(self.data.spellId) then return end
+                    
+                    if button == "RightButton" and self.data.isHistory then
+                        if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
+                        
+                        local id = self.data.spellId
+                        if EHTweaksDB.favorites[id] then
+                            EHTweaksDB.favorites[id] = nil
+                            print("|cffFFFF00EHTweaks:|r Removed from Favorites.")
+                        else
+                            EHTweaksDB.favorites[id] = true
+                            print("|cff00FF00EHTweaks:|r Added to Favorites!")
+                        end
+                        
+                        isDataDirty = true 
+                        UpdateScroll() 
+                        return
+                    end
+                    
+                    if EHTweaks_HandleLinkClick and EHTweaks_HandleLinkClick(self.data.spellId) then return end
                     if self.data.isPerk then return end
+                    
                     if _G.skillTreeFrame then _G.skillTreeFrame:Show() end
                     local btn = _G["skillTreeNode" .. self.data.nodeId]
                     if btn and _G.skillTreeScroll then
                         local scroll = _G.skillTreeScroll
                         local _, _, _, xOfs, yOfs = btn:GetPoint(1)
                         if xOfs then
-                           scroll:SetHorizontalScroll(math.max(0, xOfs - (scroll:GetWidth()/2)))
-                           scroll:SetVerticalScroll(math.max(0, math.abs(yOfs) - (scroll:GetHeight()/2)))
+                            local h = xOfs - (scroll:GetWidth()/2)
+                            local v = math.abs(yOfs) - (scroll:GetHeight()/2)
+                            scroll:SetHorizontalScroll(math.max(0, h))
+                            scroll:SetVerticalScroll(math.max(0, v))
+                            
+                            if not btn.browserGlow then
+                                local glow = btn:CreateTexture(nil, "OVERLAY")
+                                glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+                                glow:SetBlendMode("ADD")
+                                glow:SetVertexColor(1, 0.5, 0, 1) 
+                                glow:SetPoint("CENTER", btn, "CENTER", 0, 0)
+                                glow:SetSize(btn:GetWidth() * 2, btn:GetHeight() * 2)
+                                local ag = glow:CreateAnimationGroup()
+                                local a1 = ag:CreateAnimation("Alpha")
+                                a1:SetChange(-1) a1:SetDuration(1) a1:SetOrder(1)
+                                ag:SetLooping("REPEAT")
+                                btn.browserGlow = glow
+                                btn.browserGlowAnim = ag
+                            end
+                            btn.browserGlow:Show()
+                            btn.browserGlowAnim:Play()
+                            C_Timer.After(5, function() 
+                                if btn.browserGlow then btn.browserGlow:Hide() btn.browserGlowAnim:Stop() end 
+                            end)
                         end
                     end
                 end)
+                
                 self.rows[i] = row
             end
         end
@@ -810,81 +896,53 @@ local function CreateBrowserFrame()
     
     f.UpdateLayout = function(self)
         self:CreateRows()
-        
         local w = self:GetWidth()
-        local contentW = w - 40 -- margins
-        
-        self.scroll:SetPoint("BOTTOMRIGHT", -30, 30)
+        local contentW = w - 40
         self.searchBox:SetWidth(w - 260)
-        
         for i, row in ipairs(self.rows) do
              row:SetWidth(contentW)
-             row:SetPoint("TOPLEFT", 15, -70 - (i-1)*ROW_HEIGHT)
+             row:SetPoint("TOPLEFT", 10, -5 - (i-1)*ROW_HEIGHT)
         end
         UpdateScroll()
     end
     
-    f:SetScript("OnSizeChanged", function(self)
-        self:UpdateLayout()
-    end)
-    
-    -- Initial Layout
-    -- Initial Layout (Moved to end)
+    f:SetScript("OnSizeChanged", function(self) self:UpdateLayout() end)
 
-    
-    -- SETTINGS FRAME
+    -- --- SETTINGS FRAME ---
     local settings = CreateFrame("Frame", nil, f)
-    settings:SetAllPoints(f)
+    settings:SetPoint("TOPLEFT", 10, -60)
+    settings:SetPoint("BOTTOMRIGHT", -10, 40)
+    Skin.ApplyInset(settings)
     settings:Hide()
     f.settingsFrame = settings
     
     local sTitle = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    sTitle:SetPoint("TOPLEFT", 20, -50)
+    sTitle:SetPoint("TOPLEFT", 20, -20)
     sTitle:SetText("EHTweaks Settings")
     
-    local cb1 = CreateFrame("CheckButton", "EHTweaks_CB_Filters", settings, "UICheckButtonTemplate")
-    cb1:SetPoint("TOPLEFT", sTitle, "BOTTOMLEFT", 0, -20)
-    _G[cb1:GetName().."Text"]:SetText("Enhance Project Ebonhold with Filters")
-    cb1:SetScript("OnClick", function(self)
-        if EHTweaksDB then
-            EHTweaksDB.enableFilters = self:GetChecked() and true or false
-        end
-    end)
-    -- Init state
-    if EHTweaksDB then cb1:SetChecked(EHTweaksDB.enableFilters) end
+    local lastObj = sTitle
+    local function AddCheck(varName, label, onClick)
+        local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
+        cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -15)
+        local text = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        text:SetPoint("LEFT", cb, "RIGHT", 5, 1)
+        text:SetText(label)
+        cb:SetScript("OnClick", onClick)
+        if EHTweaksDB and EHTweaksDB[varName] then cb:SetChecked(true) end
+        lastObj = cb
+        return cb
+    end
+
+    AddCheck("enableFilters", "Enhance Project Ebonhold with Filters", function(s) EHTweaksDB.enableFilters = s:GetChecked() end)
+    AddCheck("enableChatLinks", "Enhance Project Ebonhold with Chat Links", function(s) EHTweaksDB.enableChatLinks = s:GetChecked() end)
+    AddCheck("enableTracker", "Enhance Project Ebonhold with Objective Tracker", function(s) EHTweaksDB.enableTracker = s:GetChecked() end)
     
-     local cb2 = CreateFrame("CheckButton", "EHTweaks_CB_Links", settings, "UICheckButtonTemplate")
-    cb2:SetPoint("TOPLEFT", cb1, "BOTTOMLEFT", 0, -10)
-    _G[cb2:GetName().."Text"]:SetText("Enhance Project Ebonhold with Chat Links")
-    cb2:SetScript("OnClick", function(self)
-        if EHTweaksDB then
-            EHTweaksDB.enableChatLinks = self:GetChecked() and true or false
-        end
-    end)
-    if EHTweaksDB then cb2:SetChecked(EHTweaksDB.enableChatLinks) end
-
-    -- Objective Tracker Checkbox
-    local cb3 = CreateFrame("CheckButton", "EHTweaks_CB_Tracker", settings, "UICheckButtonTemplate")
-    cb3:SetPoint("TOPLEFT", cb2, "BOTTOMLEFT", 0, -10)
-    _G[cb3:GetName().."Text"]:SetText("Enhance Project Ebonhold with Objective Tracker")
-    cb3:SetScript("OnClick", function(self)
-        if EHTweaksDB then
-            EHTweaksDB.enableTracker = self:GetChecked() and true or false
-            -- Immediately update visibility
-            if _G.ProjectEbonhold and _G.ProjectEbonhold.ObjectivesService then
-                 UpdateEHObjectiveDisplay(_G.ProjectEbonhold.ObjectivesService.GetActiveObjective())
-            end
-        end
-    end)
-    if EHTweaksDB then cb3:SetChecked(EHTweaksDB.enableTracker) end
-    
-
-
-    -- Minimap Button Checkbox
-    local cb4 = CreateFrame("CheckButton", "EHTweaks_CB_Minimap", settings, "UICheckButtonTemplate")
-    cb4:SetPoint("TOPLEFT", cb3, "BOTTOMLEFT", 0, -10)
-    _G[cb4:GetName().."Text"]:SetText("Show Minimap Button")
-    cb4:SetScript("OnClick", function(self)
+    local mmCb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
+    mmCb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -15)
+    local mmText = mmCb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    mmText:SetPoint("LEFT", mmCb, "RIGHT", 5, 1)
+    mmText:SetText("Show Minimap Button")
+    mmCb:SetScript("OnClick", function(self)
         if EHTweaksDB then
             EHTweaksDB.minimapButtonHidden = not self:GetChecked()
             if EHTweaksDB.minimapButtonHidden then
@@ -894,121 +952,83 @@ local function CreateBrowserFrame()
             end
         end
     end)
-    if EHTweaksDB then cb4:SetChecked(not EHTweaksDB.minimapButtonHidden) end
-
-    -- Locked Echo Warning Checkbox
-    local cb5 = CreateFrame("CheckButton", "EHTweaks_CB_LockedEcho", settings, "UICheckButtonTemplate")
-    cb5:SetPoint("TOPLEFT", cb4, "BOTTOMLEFT", 0, -10)
-    _G[cb5:GetName().."Text"]:SetText("Warn on Death if Echo Locked")
-    cb5:SetScript("OnClick", function(self)
-        if EHTweaksDB then
-            EHTweaksDB.enableLockedEchoWarning = self:GetChecked() and true or false
-        end
-    end)
-    if EHTweaksDB then cb5:SetChecked(EHTweaksDB.enableLockedEchoWarning) end
-
-    -- Apply & Reload Button
+    if EHTweaksDB then mmCb:SetChecked(not EHTweaksDB.minimapButtonHidden) end
+    lastObj = mmCb
+    
+    AddCheck("enableLockedEchoWarning", "Warn on Death if Echo Locked", function(s) EHTweaksDB.enableLockedEchoWarning = s:GetChecked() end)
+    
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
-    reloadBtn:SetPoint("TOPLEFT", cb5, "BOTTOMLEFT", 0, -30)
+    reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -30)
     reloadBtn:SetText("Apply and Reload UI")
-    reloadBtn:SetScript("OnClick", function()
-        ReloadUI()
-    end)
-    
+    reloadBtn:SetScript("OnClick", ReloadUI)
+
     local warn = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     warn:SetPoint("TOPLEFT", reloadBtn, "BOTTOMLEFT", 0, -10)
     warn:SetText("Note: Browser features (this window) will remain active\nregardless of these settings.")
     warn:SetTextColor(0.6, 0.6, 0.6)
-    
-    -- IMPORT / EXPORT FRAME
+
+    -- --- IMPORT/EXPORT FRAME ---
     local import = CreateFrame("Frame", nil, f)
-    import:SetAllPoints(f)
+    import:SetPoint("TOPLEFT", 10, -60)
+    import:SetPoint("BOTTOMRIGHT", -10, 40)
+    Skin.ApplyInset(import)
     import:Hide()
     f.importFrame = import
     
     local iTitle = import:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    iTitle:SetPoint("TOPLEFT", 20, -50)
-    iTitle:SetText("Import / Export")
+    iTitle:SetPoint("TOPLEFT", 20, -20)
+    iTitle:SetText("Import / Export Echoes")
     
     local h1 = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     h1:SetPoint("TOPLEFT", iTitle, "BOTTOMLEFT", 0, -20)
-    h1:SetText("Share your Echoes DB with others.")    
+    h1:SetText("Share your Echoes DB with others.")   
     
     local exportBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
     exportBtn:SetSize(160, 30)
     exportBtn:SetPoint("TOPLEFT", h1, "BOTTOMLEFT", 0, -10)
     exportBtn:SetText("Export Echoes")
     exportBtn:SetScript("OnClick", function()
-    -- Ensure DB is current before export
-    if ProjectEbonhold and ProjectEbonhold.PerkService then
-        local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
-        if granted then
-            for spellName, instances in pairs(granted) do
-                for _, info in ipairs(instances) do
-                    if EHTweaks_RecordEchoInfo then
-                        EHTweaks_RecordEchoInfo(info.spellId, info.quality)
+        if ProjectEbonhold and ProjectEbonhold.PerkService then
+            local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
+            if granted then
+                for spellName, instances in pairs(granted) do
+                    for _, info in ipairs(instances) do
+                        if EHTweaks_RecordEchoInfo then
+                            EHTweaks_RecordEchoInfo(info.spellId, info.quality)
+                        end
                     end
                 end
             end
         end
-    end
-    
-    StaticPopupDialogs["EHTWEAKS_EXPORT"] = {
-        text = "Echoes DB Export String:\\n(Ctrl+C to copy)",
-        button1 = "Close",
-        hasEditBox = true,
-        maxLetters = 999999,
-        editBoxWidth = 350,
-        OnShow = function(self)
-            local str = EHTweaks_ExportEchoes()
-            self.editBox:SetText(str)
-            self.editBox:HighlightText()
-            self.editBox:SetFocus()
-        end,
-        EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
-        timeout = 0, whileDead = true, hideOnEscape = true
-    }
-    StaticPopup_Show("EHTWEAKS_EXPORT")
-end)
-
-      
-    
-    -- Anchor to exportBtn instead of div to maintain left alignment
-	local h2 = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	h2:SetPoint("TOPLEFT", exportBtn, "BOTTOMLEFT", 0, -30)
-	h2:SetText("Import Echoes DB from another player.")
-	h2:SetWidth(360)
-	h2:SetJustifyH("LEFT")
-
-	local importBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
-	importBtn:SetSize(160, 30)
-	importBtn:SetPoint("TOPLEFT", h2, "BOTTOMLEFT", 0, -10)
-	importBtn:SetText("Import Echoes")
-
-
-    importBtn:SetScript("OnClick", function()
-        StaticPopupDialogs["EHTWEAKS_IMPORT"] = {
-            text = "Paste Export String here:\n(Ctrl+V. Imports are merged)",
-            button1 = "Import",
-            button2 = "Cancel",
-            hasEditBox = true,
-            maxLetters = 999999,
-            editBoxWidth = 350,
-            OnAccept = function(self)
-                local code = self.editBox:GetText()
-                local count, err = EHTweaks_ImportEchoes(code)
-                if count > 0 then
-                    print("|cff00ff00EHTweaks:|r Successfully imported " .. count .. " new/upgraded Echoes.")
-                    RefreshData() -- Refresh list immediately if open
-                else
-                    print("|cffff0000EHTweaks:|r Import failed: " .. (err or "No new data found."))
-                end
-            end,
-            EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+        local str = EHTweaks_ExportEchoes and EHTweaks_ExportEchoes() or ""
+        StaticPopupDialogs["EHTWEAKS_EXPORT"] = {
+            text = "Echoes DB Export String:\n(Ctrl+C to copy)", button1 = "Close", hasEditBox = true, editBoxWidth = 350,
+            OnShow = function(self) self.editBox:SetText(str) self.editBox:HighlightText() end,
             timeout = 0, whileDead = true, hideOnEscape = true
         }
-        StaticPopup_Show("EHTWEAKS_IMPORT")
+        StaticPopup_Show("EHTWEAKS_EXPORT")
+    end)
+
+    local h2 = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    h2:SetPoint("TOPLEFT", exportBtn, "BOTTOMLEFT", 0, -30)
+    h2:SetText("Import Echoes DB from another player.")
+    h2:SetWidth(360)
+    h2:SetJustifyH("LEFT")
+
+    local importBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
+    importBtn:SetSize(160, 30)
+    importBtn:SetPoint("TOPLEFT", h2, "BOTTOMLEFT", 0, -10)
+    importBtn:SetText("Import Echoes")
+    importBtn:SetScript("OnClick", function()
+        StaticPopupDialogs["EHTWEAKS_IMPORT_ECHOES"] = {
+            text = "Paste String:", button1 = "Import", button2 = "Cancel", hasEditBox = true,
+            OnAccept = function(self) 
+                if EHTweaks_ImportEchoes then EHTweaks_ImportEchoes(self.editBox:GetText()) end
+            end,
+            timeout = 0, whileDead = true, hideOnEscape = true
+        }
+        StaticPopup_Show("EHTWEAKS_IMPORT_ECHOES")
     end)
     
     local separator = import:CreateTexture(nil, "ARTWORK")
@@ -1016,9 +1036,8 @@ end)
     separator:SetPoint("TOPLEFT", importBtn, "BOTTOMLEFT", 0, -20)
     separator:SetPoint("RIGHT", -20, 0)
     separator:SetTexture("Interface\\Buttons\\WHITE8X8")
-    separator:SetVertexColor(0.3, 0.3, 0.3, 0.5)
-    
-    -- Starter DB Controls (Manual)
+    separator:SetVertexColor(0.4, 0.4, 0.4, 0.5)
+
     if _G.ETHTweaks_OptionalDB_Data then
         local starterHeader = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         starterHeader:SetPoint("TOPLEFT", separator, "BOTTOMLEFT", 0, -10)
@@ -1036,7 +1055,11 @@ end)
                     print("|cff00ff00EHTweaks:|r Merged Starter DB (" .. count .. " echoes added/updated).")
                     RefreshData()
                 else
-                    print("|cffff0000EHTweaks:|r Merge failed: " .. (err or "Unknown"))
+                    if err == "No new data (Database already up-to-date)" then
+                        print("|cffFFFF00EHTweaks:|r Merge complete. No new echoes found.")
+                    else
+                        print("|cffff0000EHTweaks:|r Merge failed: " .. (err or "Unknown"))
+                    end
                 end
             end
         end)
@@ -1048,10 +1071,9 @@ end)
         overrideStarterBtn:SetScript("OnClick", function()
             StaticPopupDialogs["EHTWEAKS_OVERRIDE"] = {
                 text = "|cffff0000WARNING:|r This will DELETE your current history and replace it with the Starter Database.\nAre you sure?",
-                button1 = "Yes, Override",
-                button2 = "Cancel",
+                button1 = "Yes, Override", button2 = "Cancel",
                 OnAccept = function()
-                    EHTweaksDB.seenEchoes = {} -- Wipe first
+                    EHTweaksDB.seenEchoes = {} 
                     local starter = _G.ETHTweaks_OptionalDB_Data
                     if starter and starter.data then
                         local count, err = EHTweaks_ImportEchoes(starter.data)
@@ -1068,7 +1090,6 @@ end)
             StaticPopup_Show("EHTWEAKS_OVERRIDE")
         end)
         
-        -- Purge Button (Aligned)
         local purgeBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
         purgeBtn:SetSize(120, 25)
         purgeBtn:SetPoint("LEFT", overrideStarterBtn, "RIGHT", 10, 0)
@@ -1076,8 +1097,7 @@ end)
         purgeBtn:SetScript("OnClick", function()
             StaticPopupDialogs["EHTWEAKS_PURGE"] = {
                 text = "Are you sure you want to clear your Echoes History?\nThis cannot be undone.",
-                button1 = "Yes",
-                button2 = "No",
+                button1 = "Yes", button2 = "No",
                 OnAccept = function()
                     EHTweaksDB.seenEchoes = {}
                     isDataDirty = true
@@ -1088,18 +1108,15 @@ end)
             }
             StaticPopup_Show("EHTWEAKS_PURGE")
         end)
-
     else
-        -- Purge Button (Fallback, lifted to avoid tabs)
         local purgeBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
         purgeBtn:SetSize(120, 25)
-        purgeBtn:SetPoint("BOTTOMRIGHT", -20, 50)
+        purgeBtn:SetPoint("TOPLEFT", separator, "BOTTOMLEFT", 0, -20)
         purgeBtn:SetText("Purge DB")
         purgeBtn:SetScript("OnClick", function()
             StaticPopupDialogs["EHTWEAKS_PURGE"] = {
                 text = "Are you sure you want to clear your Echoes History?\nThis cannot be undone.",
-                button1 = "Yes",
-                button2 = "No",
+                button1 = "Yes", button2 = "No",
                 OnAccept = function()
                     EHTweaksDB.seenEchoes = {}
                     isDataDirty = true
@@ -1112,10 +1129,7 @@ end)
         end)
     end
     
-    -- Initial Layout & Tab Selection (Must be last)
     f:UpdateLayout()
-    SetTab(1)
-    
     return f
 end
 
