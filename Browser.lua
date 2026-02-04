@@ -5,7 +5,7 @@
 local addonName, addon = ...
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
--- [FIX] Ensure global Skin table exists to prevent errors if loading order varies
+-- Ensure global Skin table exists to prevent errors if loading order varies
 if not EHTweaks.Skin then EHTweaks.Skin = {} end
 local Skin = EHTweaks.Skin
 
@@ -76,7 +76,6 @@ local browserFrame = nil
 local isDataDirty = true
 
 -- --- Helper: Text Merging ---
-
 local function GetRichDescription(data)
     if not data then return "" end
 
@@ -151,7 +150,6 @@ local function GetRichDescription(data)
 end
 
 -- --- Data Building ---
-
 local function BuildTreeData()
     local data = {}
     if TalentDatabase and TalentDatabase[0] then
@@ -260,7 +258,7 @@ local function BuildHistoryData()
                     }
                 end
                 
-                -- [FIX] Ensure absolute value for quality to prevent -0 or negative numbers
+                -- Ensure absolute value for quality to prevent -0 or negative numbers
                 local q = math.abs(tonumber(info.quality) or 0)
                 
                 groups[name].qualities[q] = spellId
@@ -318,9 +316,9 @@ local function ApplyFilter()
             else
                 -- Description match (using existing GetRichDescription if available)
                 local desc = nil
-                if GetRichDescription then 
-                    desc = GetRichDescription(entry) 
-                end
+                -- if GetRichDescription then 
+                    -- desc = GetRichDescription(entry) 
+                -- end
                 
                 if desc and string.find(string.lower(desc), text, 1, true) then
                     table.insert(filteredData, entry)
@@ -359,7 +357,6 @@ local function RefreshData()
 end
 
 -- --- IMPORT / EXPORT LOGIC (LibDeflate) ---
-
 -- Format: { [1]={id=123,q=1}, [2]={id=456,q=0}, ... } -> Serialized -> Compressed -> Encoded
 function EHTweaks_ExportEchoes()
     if not EHTweaksDB.seenEchoes then 
@@ -387,9 +384,8 @@ function EHTweaks_ExportEchoes()
     end
     local rawString = table.concat(parts, ",")
     
-    -- Compress
-    local compressed = LibDeflate:CompressDeflate(rawString)
-    -- Encode
+    -- Compress + Encode
+    local compressed = LibDeflate:CompressDeflate(rawString)    
     local encoded = LibDeflate:EncodeForPrint(compressed)
     
     return EXPORT_HEADER .. encoded
@@ -482,7 +478,6 @@ function EHTweaks_ImportEchoes(code)
 end
 
 -- --- UI Logic ---
-
 local function UpdateScroll()
     if not browserFrame then return end
     
@@ -523,7 +518,7 @@ local function UpdateScroll()
                 
                 row.icon:SetTexture(data.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
                 
-                -- [POLISH] Favorites Styling
+                -- Favorites Styling
                 if data.isFavorite then
                     -- Show Gem Icon
                     row.favMark:Show()
@@ -729,7 +724,7 @@ local function CreateBrowserFrame()
         prevTab = t
     end
 
-    -- [UPDATED] CreateRows with Favorites, Tooltips, and Click Logic
+    -- CreateRows with Favorites, Tooltips, and Click Logic
      f.CreateRows = function(self)
         local h = self:GetHeight()
         local availableH = h - 90 
@@ -772,16 +767,15 @@ local function CreateBrowserFrame()
                 typeText:SetJustifyH("LEFT")
                 row.typeText = typeText
                 
-                -- [NEW] Favorite Marker (Gem Icon)
+                -- Favorite Marker (Gem Icon)
                 local favMark = row:CreateTexture(nil, "OVERLAY")
-                favMark:SetSize(14, 14)
-                -- Positioned to the right, but we will anchor 'cost' to it
+                favMark:SetSize(14, 14)                
                 favMark:SetPoint("RIGHT", -10, 0) 
                 favMark:SetTexture("Interface\\Icons\\inv_misc_gem_02")
                 favMark:Hide()
                 row.favMark = favMark
 
-                -- [UPDATE] Cost/Pips anchored to the left of the Gem
+                -- Cost/Pips anchored to the left of the Gem
                 local cost = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 cost:SetPoint("RIGHT", favMark, "LEFT", -5, 0)
                 row.cost = cost

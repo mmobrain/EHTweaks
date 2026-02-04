@@ -5,11 +5,11 @@
 local addonName, addon = ...
 local LibDeflate = LibStub:GetLibrary("LibDeflate")
 
--- [FIX] Ensure EHTweaks.Skin exists
+-- Ensure EHTweaks.Skin exists
 if not EHTweaks.Skin then EHTweaks.Skin = {} end
 local Skin = EHTweaks.Skin
 
--- [FIX] Define Fallback Skin functions if they don't exist
+-- Define Fallback Skin functions if they don't exist
 if not Skin.ApplyWindow then
     Skin.ApplyWindow = function(f, title)
         f:SetBackdrop({
@@ -68,7 +68,8 @@ EHTweaks.Loadout = EHTweaks.Loadout or {
     listData = {},
     iconPool = {},
     MAX_BACKUPS = 2,
-    EXPORT_HEADER = "!EHTL!"
+    EXPORT_HEADER = "!EHTL!",
+    showOnlyMyClass = false
 }
 
 local LM = EHTweaks.Loadout
@@ -222,11 +223,17 @@ local function GetTreeInfo()
 end
 
 -- --- Logic: Storage ---
-local function GetClassLoadoutDB()
+local function GetAllLoadoutsDB()
     if not EHTweaksDB.loadouts then EHTweaksDB.loadouts = {} end
+    return EHTweaksDB.loadouts
+end
+
+-- Get only current class loadouts (backwards compatible accessor)
+local function GetClassLoadoutDB()
+    local allDB = GetAllLoadoutsDB()
     local _, class = UnitClass("player")
-    if not EHTweaksDB.loadouts[class] then EHTweaksDB.loadouts[class] = {} end
-    return EHTweaksDB.loadouts[class]
+    if not allDB[class] then allDB[class] = {} end
+    return allDB[class]
 end
 
 local function GetBackupDB()
@@ -239,13 +246,35 @@ function EHTweaks_RefreshLoadoutList()
     if not LM.managerFrame then return end
     
     local backups = GetBackupDB()
-    local saved = GetClassLoadoutDB()
     local playerAsh = (EbonholdPlayerRunData and EbonholdPlayerRunData.soulPoints) or 0
+    local _, playerClass = UnitClass("player")
     
+    -- NEW: Build list with optional class filtering
     local sortedSaved = {}
     local sortedBackups = {}
-    for _, v in ipairs(saved) do table.insert(sortedSaved, v) end
-    for _, v in ipairs(backups) do table.insert(sortedBackups, v) end
+    
+    if LM.showOnlyMyClass then
+        -- OLD BEHAVIOR: Only current class
+        local saved = GetClassLoadoutDB()
+        for _, v in ipairs(saved) do
+            table.insert(sortedSaved, v)
+        end
+    else
+        -- NEW BEHAVIOR: All classes
+        local allDB = GetAllLoadoutsDB()
+        for class, classLoadouts in pairs(allDB) do
+            for _, v in ipairs(classLoadouts) do
+                -- Tag with class for display
+                v.savedForClass = class
+                table.insert(sortedSaved, v)
+            end
+        end
+    end
+    
+    for _, v in ipairs(backups) do
+        table.insert(sortedBackups, v)
+    end
+    
     table.sort(sortedSaved, function(a, b) return (a.timestamp or 0) > (b.timestamp or 0) end)
     table.sort(sortedBackups, function(a, b) return (a.timestamp or 0) > (b.timestamp or 0) end)
     
@@ -257,11 +286,24 @@ function EHTweaks_RefreshLoadoutList()
     for i = 1, #LM.managerFrame.rows do
         local row = LM.managerFrame.rows[i]
         local idx = offset + i
-        
         if idx <= #LM.listData then
             local data = LM.listData[idx]
             row.data, row.idx = data, idx
-            row.name:SetText(data.name)
+            
+            -- Display class tag if showing all classes
+            local displayName = data.name
+            if not LM.showOnlyMyClass and data.savedForClass then
+                local classColor = RAID_CLASS_COLORS[data.savedForClass]
+                if classColor then
+                    displayName = string.format("|cff%02x%02x%02x[%s]|r %s",
+                        classColor.r * 255, classColor.g * 255, classColor.b * 255,
+                        data.savedForClass:sub(1,3):upper(), data.name)
+                else
+                    displayName = "[" .. data.savedForClass .. "] " .. data.name
+                end
+            end
+            
+            row.name:SetText(displayName)
             row.icon:SetTexture(data.icon)
             
             if data.isBackup then
@@ -273,7 +315,11 @@ function EHTweaks_RefreshLoadoutList()
                 row.cost:SetText(color .. (data.cost or 0) .. " Ash|r")
             end
             
-            if LM.selectedIndex == idx then row.bg:Show() else row.bg:Hide() end
+            if LM.selectedIndex == idx then
+                row.bg:Show()
+            else
+                row.bg:Hide()
+            end
             row:Show()
         else
             row:Hide()
@@ -576,7 +622,7 @@ local function CreateLoadoutManagerFrame()
     btnSaveNew:SetPoint("BOTTOMLEFT", 20, bottomY)
     btnSaveNew:SetText("Save Current")
     
-    -- [NEW] Quick Save Logic
+    -- Quick Save Logic
     btnSaveNew:SetScript("OnClick", function()
         -- SHIFT CLICK: Quick Save
         if IsShiftKeyDown() then
@@ -618,7 +664,7 @@ local function CreateLoadoutManagerFrame()
         end
     end)
     
-    -- [NEW] Tooltip
+    -- Tooltip
     btnSaveNew:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Save Loadout")
@@ -663,6 +709,26 @@ local function CreateLoadoutManagerFrame()
             EHT_FixStrata(StaticPopup_Show("EHTWEAKS_DELETE_CONFIRM"))
         end
     end)
+        
+	--Class Filter Checkbox
+	local filterCheck = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+	filterCheck:SetSize(24, 24)	
+	filterCheck:SetPoint("BOTTOMLEFT", listFrame, 0, -25)
+	
+	filterCheck:SetChecked(LM.showOnlyMyClass)
+
+	local filterLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	filterLabel:SetPoint("LEFT", filterCheck, "RIGHT", 0, 0)
+	filterLabel:SetText("My Class Only")
+	filterLabel:SetTextColor(1, 0.82, 0)
+
+	filterCheck:SetScript("OnClick", function(self)
+	    LM.showOnlyMyClass = self:GetChecked()
+	    LM.selectedIndex = 0
+	    EHTweaks_RefreshLoadoutList()
+	end)
+
+	f.filterCheck = filterCheck
 
     f:Hide()
     LM.managerFrame = f

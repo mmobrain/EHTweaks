@@ -6,7 +6,7 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 
 ## Features
 
-### 📋 Loadout Manager (New (and ugly) in alpha 0.0.9)
+### 📋 Loadout Manager
 *   **Local Build Storage**: Save your Skill Tree builds locally.
 *   **Metadata Support**: Give your builds custom names and multi-line descriptions (perfect for keeping track of build requirements or rotation tips).
 *   **Icon Selector**: Choose a unique icon for every build using a macro-style grid containing every icon found in the Skill Tree database plus generic class icons.
@@ -15,7 +15,7 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 *   **Quick Save**: Shift+Click **Save** to instantly create a backup and override (skips the popup dialog).
 *   **Sharing**: Easily Export or Import builds via compressed text strings to share your creations with other EHTweaks users.
 
-### 🔄 Fail-Safe Tree Reset (New in alpha 0.0.9)
+### 🔄 Fail-Safe Tree Reset
 *   **Reliable Refunds**: Adds a "Reset Tree" button to the bottom bar.
 *   **Logic**: EHTweaks clears your tree by applying a 1-point starter build, ensuring 100% reliability for Soul Ash refunds (this is a workaround for now - you can manually refund the last skill).
 
