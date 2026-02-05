@@ -1,5 +1,8 @@
 <Bindings>
     <Binding name="EHTWEAKS_TOGGLETREE" header="EHTWEAKS">
         EHTweaks_ToggleSkillTree()
+    </Binding>    
+    <Binding name="EHTWEAKS_TOGGLEECHOES" header="EHTWEAKS">
+        EHTweaks_ToggleEchoes()
     </Binding>
 </Bindings>

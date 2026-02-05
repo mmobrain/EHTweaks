@@ -332,10 +332,18 @@ function EHTweaks_RefreshLoadoutList()
         local d = LM.listData[LM.selectedIndex]
         LM.managerFrame.detailName:SetText(d.name)
         LM.managerFrame.detailDesc:SetText(d.desc)
-        LM.managerFrame.btnExport:Enable() LM.managerFrame.btnApply:Enable() LM.managerFrame.btnDelete:Enable()
+        LM.managerFrame.btnExport:Enable() 
+	  if InCombatLockdown() then
+            LM.managerFrame.btnApply:Disable()
+        else
+            LM.managerFrame.btnApply:Enable()
+        end
+	  LM.managerFrame.btnDelete:Enable()
     else
         LM.managerFrame.detailName:SetText("Select a Loadout") LM.managerFrame.detailDesc:SetText("")
-        LM.managerFrame.btnExport:Disable() LM.managerFrame.btnApply:Disable() LM.managerFrame.btnDelete:Disable()
+        LM.managerFrame.btnExport:Disable() 
+	  LM.managerFrame.btnApply:Disable() 
+	  LM.managerFrame.btnDelete:Disable()
     end
 end
 
@@ -494,7 +502,11 @@ local function OverrideSelectedLoadout()
 end
 
 -- --- Logic: Apply ---
-local function ApplyLoadout(entry)
+local function EHTweaks_ApplyLoadout(entry)
+    if InCombatLockdown() then
+        print("|cffff0000EHTweaks:|r Cannot apply loadouts while in combat!")
+        return
+    end
     if not entry or not entry.nodes then return end
     EHTweaks_CreateAutoBackup()
     
@@ -698,7 +710,31 @@ local function CreateLoadoutManagerFrame()
     f.btnApply:SetSize(110, 25)
     f.btnApply:SetPoint("LEFT", f.btnExport, "RIGHT", spacing, 0)
     f.btnApply:SetText("Apply Loadout")
-    f.btnApply:SetScript("OnClick", function() if LM.selectedIndex > 0 then ApplyLoadout(LM.listData[LM.selectedIndex]) f:Hide() end end)
+    f.btnApply:SetScript("OnClick", function() if LM.selectedIndex > 0 then EHTweaks_ApplyLoadout(LM.listData[LM.selectedIndex]) f:Hide() end end)
+    
+    --Combat State Handling
+    f:RegisterEvent("PLAYER_REGEN_DISABLED") -- Combat Start
+    f:RegisterEvent("PLAYER_REGEN_ENABLED")  -- Combat End
+    f:SetScript("OnEvent", function(self, event)
+        if event == "PLAYER_REGEN_DISABLED" then
+            if self.btnApply then self.btnApply:Disable() end
+            if self.btnImport then self.btnImport:Disable() end 
+            -- Note: Export/Save usually OK in combat, but Apply is strictly NO.
+        elseif event == "PLAYER_REGEN_ENABLED" then
+            -- Re-enable based on selection state
+            if LM.selectedIndex > 0 then
+                if self.btnApply then self.btnApply:Enable() end
+            end
+            if self.btnImport then self.btnImport:Enable() end
+        end
+    end)
+
+    -- Initial Check when opening frame
+    f:HookScript("OnShow", function(self)
+        if InCombatLockdown() then
+            if self.btnApply then self.btnApply:Disable() end
+        end
+    end)
     
     f.btnDelete = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     f.btnDelete:SetSize(80, 25)
@@ -791,4 +827,48 @@ function EHTweaks_ToggleLoadoutManager()
     if not LM.managerFrame then CreateLoadoutManagerFrame() end
     if LM.managerFrame:IsShown() then LM.managerFrame:Hide()
     else LM.selectedIndex = 0 EHTweaks_RefreshLoadoutList() LM.managerFrame:Show() end
+end
+
+
+-- Global function to load a loadout by name (case-insensitive)
+-- --- Macro Support ---
+
+function EHTweaks_LoadLoadout(targetName)
+	if InCombatLockdown() then
+        print("|cffff0000EHTweaks:|r Cannot change loadouts while in combat!")
+        return
+    end
+    
+    if not targetName or targetName == "" then
+        print("|cffff0000EHTweaks:|r Usage: /ehtload Loadout Name")
+        return
+    end
+
+    local allDB = EHTweaksDB.loadouts or {}
+    local foundEntry = nil
+    
+    -- Search ALL classes for the loadout
+    for class, loadoutList in pairs(allDB) do
+        for _, entry in ipairs(loadoutList) do
+            if string.lower(entry.name) == string.lower(targetName) then
+                foundEntry = entry
+                break
+            end
+        end
+        if foundEntry then break end
+    end
+
+    if foundEntry then
+        -- Success: Apply the loadout directly
+        EHTweaks_ApplyLoadout(foundEntry)
+        print("|cff00ff00EHTweaks:|r Loading: " .. foundEntry.name)
+    else
+        print("|cffff0000EHTweaks:|r Loadout '" .. targetName .. "' not found.")
+    end
+end
+
+-- Slash Command Handler
+SLASH_EHTLOAD1 = "/ehtload"
+SlashCmdList["EHTLOAD"] = function(msg)
+    EHTweaks_LoadLoadout(msg)
 end

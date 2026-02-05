@@ -13,6 +13,7 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 *   **Auto-Backup**: EHTweaks automatically saves a snapshot of your current build before you perform a Reset or Apply a new loadout (stores up to 2 backups).
 *   **Override Selected Loadout**: Override the currently selected Loadout without re-picking it.
 *   **Quick Save**: Shift+Click **Save** to instantly create a backup and override (skips the popup dialog).
+*   **Quick Switch**: Use `/ehtload Loadout Name` to switch loadouts instantly via chat or macros.
 *   **Sharing**: Easily Export or Import builds via compressed text strings to share your creations with other EHTweaks users.
 
 ### 🔄 Fail-Safe Tree Reset
@@ -34,7 +35,8 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 *   **Skill Tree Tab**: A searchable list of every node available in the tree.
 *   **My Echoes Tab**: View all your collected Perks (Echoes) in one consolidated list.
 *   **Jump-to-Tree**: Clicking a skill in the browser automatically opens the Skill Tree, scrolls to that node, and highlights it with an orange pulsing glow.
-*   **Echo Favorites**: Right-click an Echo to **Star** it; starred Echoes are pinned to the top.
+*   **Echo Favorites**: Right-click (Echoes DB) or Shift+Right-click ("My Echoes") an Echo to **Star** it; favorited Echoes are pinned to the top and marked with a diamond icon and "FAVOURED" label.
+*   **Quick Access**: Open "My Echoes" by clicking the "E" button on the custom MiniRunBar.
 
 (alpha 0.0.3)
 
@@ -72,9 +74,11 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 ## Commands
 *   `/eht` - Open the Ebonhold Compendium (Browser).
 *   `/eht reset` - Wipes the internal browser cache (useful if the server updates the tree).
+*   `/ehtload Loadout Name` - Switch loadouts instantly via chat or macros.
 
 ## Keybinds
 *   **Skill Tree Open/Close** - Available in the WoW Key Bindings menu.
+*   **Toggle My Echoes** - Available in the WoW Key Bindings menu.
 
 ## Other QOL
 *   `Ctrl+Alt+click` - Link Echo or Skill to chat.

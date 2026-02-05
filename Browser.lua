@@ -634,16 +634,19 @@ local function CreateBrowserFrame()
     sb:SetPoint("TOPRIGHT", -30, -32)
     sb:SetAutoFocus(false)
     sb:SetScript("OnTextChanged", function(self) self.updateDelay = 0.3 end)
-    sb:SetScript("OnUpdate", function(self, elapsed)
-        if self.updateDelay then
-            self.updateDelay = self.updateDelay - elapsed
-            if self.updateDelay <= 0 then
-                self.updateDelay = nil
-                ApplyFilter()
-                UpdateScroll()
-            end
-        end
-    end)
+	sb:SetScript("OnUpdate", function(self, elapsed)
+	    elapsed = math.min(elapsed or 0, 0.1)
+
+	    if self.updateDelay then
+		  self.updateDelay = self.updateDelay - elapsed
+		  if self.updateDelay <= 0 then
+			self.updateDelay = nil
+			ApplyFilter()
+			UpdateScroll()
+		  end
+	    end
+	end)
+
     f.searchBox = sb
     
     local sbLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -842,6 +845,11 @@ local function CreateBrowserFrame()
                         
                         isDataDirty = true 
                         UpdateScroll() 
+				
+				-- Refresh the draft UI immediately if it's open
+				  if EHTweaks_RefreshFavouredMarkers then
+					EHTweaks_RefreshFavouredMarkers()
+				  end
                         return
                     end
                     
@@ -917,7 +925,7 @@ local function CreateBrowserFrame()
     local lastObj = sTitle
     local function AddCheck(varName, label, onClick)
         local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
-        cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -15)
+        cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -1)
         local text = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         text:SetPoint("LEFT", cb, "RIGHT", 5, 1)
         text:SetText(label)
@@ -932,7 +940,7 @@ local function CreateBrowserFrame()
     AddCheck("enableTracker", "Enhance Project Ebonhold with Objective Tracker", function(s) EHTweaksDB.enableTracker = s:GetChecked() end)
     
     local mmCb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
-    mmCb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -15)
+    mmCb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -1)
     local mmText = mmCb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     mmText:SetPoint("LEFT", mmCb, "RIGHT", 5, 1)
     mmText:SetText("Show Minimap Button")
@@ -950,6 +958,18 @@ local function CreateBrowserFrame()
     lastObj = mmCb
     
     AddCheck("enableLockedEchoWarning", "Warn on Death if Echo Locked", function(s) EHTweaksDB.enableLockedEchoWarning = s:GetChecked() end)
+    
+    -- In the Settings Frame section:
+	AddCheck("showDraftFavorites", "Show 'FAVOURED' on Draft Cards", function(s) 
+	    EHTweaksDB.showDraftFavorites = s:GetChecked() 
+	end)
+
+	AddCheck("showEmpowermentFavorites", "Show markers in 'My Echoes'", function(s) 
+	    EHTweaksDB.showEmpowermentFavorites = s:GetChecked()
+	    -- Immediate refresh of the grid
+	    if HookEchoButtons then HookEchoButtons() end
+	end)
+
     
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
