@@ -68,8 +68,10 @@ local knownLoadouts = {} -- [Name] = ID
 -- --- Database Init ---
 local function InitializeDB()
     if not EHTweaksDB then EHTweaksDB = {} end
-    for k, v in pairs(DEFAULTS) do
-        if EHTweaksDB[k] == nil then EHTweaksDB[k] = v end
+    for k, v in pairs(DEFAULTS) do        
+        if EHTweaksDB[k] == nil then 
+            EHTweaksDB[k] = v 
+        end
     end
     -- Initialize Loadout Tables
     if not EHTweaksDB.loadouts then EHTweaksDB.loadouts = {} end
@@ -365,17 +367,22 @@ local function CreateSkillFilterFrame()
         end
     end)
 
-	eb:SetScript("OnUpdate", function(self, elapsed)
-	    elapsed = math.min(elapsed or 0, 0.1)
+    eb:SetScript("OnUpdate", function(self, elapsed)
+        elapsed = math.min(elapsed or 0, 0.1)
 
-	    if currentSearchText then
-		  searchTimer = searchTimer + elapsed
-		  if searchTimer >= SEARCHTHROTTLE then
-			ApplySkillFilter(currentSearchText)
-			searchTimer = -9999
-		  end
-	    end
-	end)
+        if currentSearchText then
+             -- Safety Init
+             if not searchTimer then searchTimer = 0 end
+             if not SEARCH_THROTTLE then SEARCH_THROTTLE = 0.2 end
+             
+             searchTimer = searchTimer + elapsed
+             if searchTimer >= SEARCH_THROTTLE then
+                ApplySkillFilter(currentSearchText)
+                searchTimer = -9999
+             end
+        end
+    end)
+
 
     
     if ProjectEbonhold and ProjectEbonhold.SkillTree and ProjectEbonhold.SkillTree.UpdateTotalSoulPoints then
@@ -1415,12 +1422,14 @@ end
 
 local function GetActivePerkCards()
     local mainFrame = _G["ProjectEbonholdPerkFrame"]
+    -- Strict check: Parent must be visible
     if not mainFrame or not mainFrame:IsShown() then return {} end
 
     local cards = {}
     local children = { mainFrame:GetChildren() }
 
     for _, child in ipairs(children) do
+        -- Strict check: Child must be visible
         if child:IsShown() and child.icon and child.selectButton and child.nameText then
             table.insert(cards, child)
         end
@@ -1428,28 +1437,161 @@ local function GetActivePerkCards()
     return cards
 end
 
--- 3. VISUAL MARKER (Green Text + Gold Glow)
-local function MarkFavouredEchoes()
-    -- Only run if setting enabled
-    if not EHTweaksDB.showDraftFavorites then 
-        -- If disabled, hide existing markers
-        local cards = GetActivePerkCards()
-        for _, card in ipairs(cards) do
-            if card.ehtFavMarker then card.ehtFavMarker:Hide() end
+
+-- Helper to clean color codes
+local function StripColor(text)
+    if not text then return nil end
+    return text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+end
+
+-- New Helper: Sets up the click logic ONCE per card
+local function SetupCardInteraction(card)
+    if card.ehtInteractionSetup then return end
+    
+    card:EnableMouse(true)
+    card:SetScript("OnMouseUp", function(self, button)
+        if button == "RightButton" and IsShiftKeyDown() then
+            -- 1. Get Live Data
+            local rawName = self.nameText and self.nameText:GetText()
+            local cName = StripColor(rawName)
+            if not cName then return end
+            
+            -- 2. Check Live State (Is it CURRENTLY favored?)
+            local isCurrentlyFav = false
+            
+            -- Check logic: If ANY ID with this name is in DB, it's favored
+            if EHTweaksDB.favorites then
+                for k, v in pairs(EHTweaksDB.favorites) do
+                    if v then
+                        local n = GetSpellInfo(k)
+                        if n == cName then
+                            isCurrentlyFav = true
+                            break -- Found one, so it IS favored
+                        end
+                    end
+                end
+            end
+            
+            -- 3. Perform Toggle
+            if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
+            
+            if isCurrentlyFav then
+                -- REMOVE: Clear ALL entries matching this name (Clean cleanup)
+                for k, v in pairs(EHTweaksDB.favorites) do
+                    local n = GetSpellInfo(k)
+                    if n == cName then EHTweaksDB.favorites[k] = nil end
+                end
+                print("|cffFFFF00EHTweaks|r: Removed '" .. cName .. "' from Favorites.")
+            else
+                -- ADD: Find the specific ID for this card to save
+                local spellId = nil
+                
+                -- Strategy A: Match from choices (Best for Draft)
+                local choices = ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.GetCurrentChoice()
+                if choices then
+                     for _, choice in ipairs(choices) do
+                         local sName = GetSpellInfo(choice.spellId)
+                         if sName == cName then
+                             spellId = choice.spellId
+                             break
+                         end
+                     end
+                end
+                
+                -- Strategy B: Fallback to DB History
+                if not spellId and EHTweaksDB.seenEchoes then
+                    for id, info in pairs(EHTweaksDB.seenEchoes) do
+                        if info.name == cName then spellId = id break end
+                    end
+                end
+                
+                if spellId then
+                    -- PRIMARY ADD
+                    EHTweaksDB.favorites[spellId] = true
+                    print("|cff00FF00EHTweaks|r: Added '" .. cName .. "' to Favorites!")
+                    
+                    -- SYNC FIX: Also add ALL other IDs with the same Name found in DB
+                    -- This ensures Browser sees it as favorite even if it tracks a different ID (quality)
+                    if EHTweaksDB.seenEchoes then
+                        for id, info in pairs(EHTweaksDB.seenEchoes) do
+                            if info.name == cName then
+                                EHTweaksDB.favorites[id] = true
+                            end
+                        end
+                    end
+                else
+                    print("|cffff0000EHTweaks|r: Could not resolve ID for '" .. cName .. "'")
+                end
+            end
+            
+            -- 4. Trigger Refresh
+            -- This will call MarkFavouredEchoes again to update visuals
+            EHTweaks_RefreshFavouredMarkers()
+            
+            -- Refresh Browser
+            if EHTweaks and EHTweaks.RefreshBrowser then EHTweaks.RefreshBrowser() 
+            elseif EHTweaks_RefreshBrowser then EHTweaks_RefreshBrowser() end
         end
-        return 
-    end
+    end)
     
-    local favNames = GetFavoritedEchoNames()
+    -- Tooltip Hook (Visual feedback on hover)
+    card:HookScript("OnEnter", function(self)
+        if IsShiftKeyDown() then
+            GameTooltip:AddLine(" ")
+            local cName = StripColor(self.nameText and self.nameText:GetText())
+            
+            -- Live Check for Tooltip
+            local isF = false
+            if cName and EHTweaksDB.favorites then
+                for k, v in pairs(EHTweaksDB.favorites) do
+                    if v and GetSpellInfo(k) == cName then isF = true break end
+                end
+            end
+            
+            if isF then
+                GameTooltip:AddLine("|cffFF0000Shift+Right-Click to Unfavorite|r")
+            else
+                GameTooltip:AddLine("|cff00FF00Shift+Right-Click to Favorite|r")
+            end
+            GameTooltip:Show()
+        end
+    end)
+    
+    -- Safety: manage mouse enablement
+    card:HookScript("OnHide", function(self) self:EnableMouse(false) end)
+    card:HookScript("OnShow", function(self) self:EnableMouse(true) end)
+
+    card.ehtInteractionSetup = true
+end
+
+
+-- Main Function: Refreshes Visuals (Called by EHTweaks_RefreshFavouredMarkers)
+local function MarkFavouredEchoes()
     local cards = GetActivePerkCards()
-    
     if #cards == 0 then return end
 
-    for _, card in ipairs(cards) do
-        local cardName = card.nameText and card.nameText:GetText()
+    -- 1. Build Lookup Table for Visuals (Optimization)
+    -- Map Name -> True if favored
+    local favNames = {}
+    if EHTweaksDB.favorites then
+        for spellId, isFav in pairs(EHTweaksDB.favorites) do
+            if isFav then
+                local name = GetSpellInfo(spellId)
+                if name then favNames[name] = true end
+            end
+        end
+    end
+
+    for i, card in ipairs(cards) do
+        -- Step A: Ensure Click Logic is Setup (Once per card lifetime)
+        SetupCardInteraction(card)
+
+        -- Step B: Update Visuals based on Name
+        local rawName = card.nameText and card.nameText:GetText()
+        local cardName = StripColor(rawName)
         local isFav = cardName and favNames[cardName]
 
-        if isFav then
+        if EHTweaksDB.showDraftFavorites and isFav then
             if not card.ehtFavMarker then
                 local parent = card.iconFrame or card
                 local marker = CreateFrame("Frame", nil, parent)
@@ -1458,7 +1600,6 @@ local function MarkFavouredEchoes()
                 marker:SetFrameLevel(parent:GetFrameLevel() + 50)
                 marker:SetPoint("BOTTOM", parent, "TOP", 0, 6)
 
-                -- Gold Glow
                 local glow = marker:CreateTexture(nil, "BACKGROUND")
                 glow:SetTexture("Interface\\GLUES\\Models\\UI_Draenei\\GenericGlow64")
                 glow:SetPoint("CENTER", marker, "CENTER", 0, 0)
@@ -1467,7 +1608,6 @@ local function MarkFavouredEchoes()
                 glow:SetBlendMode("ADD")
                 glow:SetAlpha(0.6)
 
-                -- Pulse Animation (Fixed 4-step)
                 local ag = glow:CreateAnimationGroup()
                 local a1 = ag:CreateAnimation("Alpha")
                 a1:SetChange(-0.3)
@@ -1487,20 +1627,18 @@ local function MarkFavouredEchoes()
                 a4:SetOrder(4)
                 ag:SetLooping("REPEAT")
                 marker.anim = ag
-                ag:Play()
-
-                -- Text Label
+                
                 local text = marker:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
                 text:SetPoint("CENTER", 0, 0)
                 text:SetText("FAVOURED")
-                text:SetTextColor(0, 1, 0) -- Green
+                text:SetTextColor(0, 1, 0)
                 text:SetShadowColor(0, 0, 0, 1)
                 text:SetShadowOffset(1, -1)
                 marker.text = text
 
                 card.ehtFavMarker = marker
             end
-
+            
             card.ehtFavMarker:Show()
             if card.ehtFavMarker.anim then card.ehtFavMarker.anim:Play() end
         else
@@ -1511,6 +1649,8 @@ local function MarkFavouredEchoes()
         end
     end
 end
+
+
 
 -- 4. GLOBAL REFRESH (Called by Browser)
 function EHTweaks_RefreshFavouredMarkers()
@@ -1595,14 +1735,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             hooksecurefunc(ProjectEbonhold.PerkUI, "Show", function(choices)
                 RecordDraftEchoes(choices)
                 SetupPerkButtons()
-                
-                if C_Timer and C_Timer.After then
-                    C_Timer.After(0.1, function()
-                        MarkFavouredEchoes()
-                    end)
-                else
-                    MarkFavouredEchoes()
-                end
+                        
             end)
         end
 
@@ -1654,8 +1787,10 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, payload, channel, sender = ...
         if prefix == "AAM0x9" then
-            local opcodeStr, body = payload:match("^(%d+)\\t(.*)$")
+            -- 3.3.5 FIX: Use \t instead of \\t to correctly match the literal tab character
+            local opcodeStr, body = payload:match("^(%d+)\t(.*)$")
             local opcode = tonumber(opcodeStr)
+            
             if opcode == 3 and body then
                 local globalPart, loadoutsPart = body:match("([^_]+)_?(.*)")
                 if globalPart then

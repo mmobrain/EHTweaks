@@ -411,9 +411,60 @@ local function ShowSaveDialog()
         btnSave:SetScript("OnClick", function()
             local name = LM.saveFrameNameBox:GetText()
             if name == "" then name = "Untitled Build" end
-            local db = GetClassLoadoutDB()
-            table.insert(db, { name = name, desc = LM.saveFrameDescBox:GetText(), icon = LM.saveFrameSelectedIcon, nodes = LM.saveFrameNodes, cost = LM.saveFrameCost, timestamp = time() })
-            print("|cff00ff00EHTweaks:|r Loadout '"..name.."' saved.")
+            
+            -- Prepare comparison vars
+            local searchName = string.lower(name)
+            local allDB = GetAllLoadoutsDB()
+            local _, playerClass = UnitClass("player")
+            
+            local conflictClass = nil
+            local overwriteIndex = nil
+            
+            -- Check Global Uniqueness (Iterate ALL classes)
+            for className, classLoadouts in pairs(allDB) do
+                for i, loadout in ipairs(classLoadouts) do
+                    if string.lower(loadout.name) == searchName then
+                        if className == playerClass then
+                            -- Same name on MY class = Update/Overwrite
+                            overwriteIndex = i
+                        else
+                            -- Same name on OTHER class = Conflict
+                            conflictClass = className
+                        end
+                        break
+                    end
+                end
+                if conflictClass then break end
+            end
+
+            -- Block save if name exists on another class
+            if conflictClass then
+                print("|cffff0000EHTweaks:|r Save failed. The name '"..name.."' is already used by your ["..conflictClass.."] loadouts.")
+                return
+            end
+
+            -- Prepare new entry
+            local newEntry = { 
+                name = name, 
+                desc = LM.saveFrameDescBox:GetText(), 
+                icon = LM.saveFrameSelectedIcon, 
+                nodes = LM.saveFrameNodes, 
+                cost = LM.saveFrameCost, 
+                timestamp = time() 
+            }
+            
+            local currentClassDB = GetClassLoadoutDB()
+
+            if overwriteIndex then
+                -- Overwrite existing entry for current player
+                currentClassDB[overwriteIndex] = newEntry
+                print("|cff00ff00EHTweaks:|r Loadout '"..name.."' updated.")
+            else
+                -- Insert new entry
+                table.insert(currentClassDB, newEntry)
+                print("|cff00ff00EHTweaks:|r Loadout '"..name.."' saved.")
+            end
+            
             LM.saveFrame:Hide()
             EHTweaks_RefreshLoadoutList()
         end)
@@ -502,7 +553,7 @@ local function OverrideSelectedLoadout()
 end
 
 -- --- Logic: Apply ---
-local function EHTweaks_ApplyLoadout(entry)
+function EHTweaks_ApplyLoadout(entry)
     if InCombatLockdown() then
         print("|cffff0000EHTweaks:|r Cannot apply loadouts while in combat!")
         return
@@ -834,7 +885,7 @@ end
 -- --- Macro Support ---
 
 function EHTweaks_LoadLoadout(targetName)
-	if InCombatLockdown() then
+    if InCombatLockdown() then
         print("|cffff0000EHTweaks:|r Cannot change loadouts while in combat!")
         return
     end
@@ -845,21 +896,25 @@ function EHTweaks_LoadLoadout(targetName)
     end
 
     local allDB = EHTweaksDB.loadouts or {}
-    local foundEntry = nil
+    local matches = {}
     
     -- Search ALL classes for the loadout
     for class, loadoutList in pairs(allDB) do
         for _, entry in ipairs(loadoutList) do
             if string.lower(entry.name) == string.lower(targetName) then
-                foundEntry = entry
-                break
+                table.insert(matches, entry)
             end
         end
-        if foundEntry then break end
     end
 
-    if foundEntry then
-        -- Success: Apply the loadout directly
+    if #matches > 0 then
+        -- Warn if multiple loadouts exist with this name (Legacy data)
+        if #matches > 1 then
+            print("|cffff7f00EHTweaks Warning:|r Found " .. #matches .. " loadouts named '" .. targetName .. "'. Loading the first one found.")
+        end
+
+        -- Apply the first match
+        local foundEntry = matches[1]
         EHTweaks_ApplyLoadout(foundEntry)
         print("|cff00ff00EHTweaks:|r Loading: " .. foundEntry.name)
     else

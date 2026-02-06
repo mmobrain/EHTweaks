@@ -493,7 +493,7 @@ local function UpdateScroll()
     else
         if browserFrame.scroll then browserFrame.scroll:Show() end
         if browserFrame.searchBox then browserFrame.searchBox:Show() end
-        if browserFrame.searchLabel then browserFrame.searchLabel:Show() end
+        if browserFrame.searchLabel then browserFrame.searchLabel:Hide() end
         if browserFrame.listContainer then browserFrame.listContainer:Show() end
         if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
         if browserFrame.importFrame then browserFrame.importFrame:Hide() end
@@ -828,35 +828,64 @@ local function CreateBrowserFrame()
                 end)
                 row:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 
-                row:SetScript("OnClick", function(self, button)
+                                row:SetScript("OnClick", function(self, button)
                     if not self.data then return end
                     
+                    -- RIGHT CLICK: Toggle Favorite (Echoes DB)
                     if button == "RightButton" and self.data.isHistory then
                         if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
                         
                         local id = self.data.spellId
+                        local name = self.data.name
+                        if not name then name = GetSpellInfo(id) end
+                        
+                        -- Check if this specific ID is favored
                         if EHTweaksDB.favorites[id] then
-                            EHTweaksDB.favorites[id] = nil
-                            print("|cffFFFF00EHTweaks:|r Removed from Favorites.")
+                            -- REMOVE: Clear ALL IDs that match this Name (Sync Fix)
+                            if name then
+                                for k, v in pairs(EHTweaksDB.favorites) do
+                                    local n = GetSpellInfo(k)
+                                    if n == name then 
+                                        EHTweaksDB.favorites[k] = nil 
+                                    end
+                                end
+                            else
+                                -- Fallback: Just remove ID if name unavailable
+                                EHTweaksDB.favorites[id] = nil
+                            end
+                            print("|cffFFFF00EHTweaks|r: Removed '" .. (name or "Unknown") .. "' from Favorites.")
                         else
+                            -- ADD: Add this specific ID
                             EHTweaksDB.favorites[id] = true
-                            print("|cff00FF00EHTweaks:|r Added to Favorites!")
+                            print("|cff00FF00EHTweaks|r: Added '" .. (name or "Unknown") .. "' to Favorites!")
+                            
+                            -- SYNC ADD: Add all known IDs for this name found in History
+                            if name and EHTweaksDB.seenEchoes then
+                                 for k, v in pairs(EHTweaksDB.seenEchoes) do
+                                     if v.name == name then EHTweaksDB.favorites[k] = true end
+                                 end
+                            end
                         end
                         
-                        isDataDirty = true 
-                        UpdateScroll() 
-				
-				-- Refresh the draft UI immediately if it's open
-				  if EHTweaks_RefreshFavouredMarkers then
-					EHTweaks_RefreshFavouredMarkers()
-				  end
+                        -- Refresh Browser List
+                        isDataDirty = true
+                        UpdateScroll()
+                        
+                        -- Refresh Draft UI (perkMainFrame) immediately
+                        if EHTweaks_RefreshFavouredMarkers then 
+                            EHTweaks_RefreshFavouredMarkers() 
+                        end
                         return
                     end
                     
+                    -- LEFT CLICK or LINK Logic
                     if EHTweaks_HandleLinkClick and EHTweaks_HandleLinkClick(self.data.spellId) then return end
+                    
                     if self.data.isPerk then return end
                     
+                    -- JUMP TO NODE (Skills Tab)
                     if _G.skillTreeFrame then _G.skillTreeFrame:Show() end
+                    
                     local btn = _G["skillTreeNode" .. self.data.nodeId]
                     if btn and _G.skillTreeScroll then
                         local scroll = _G.skillTreeScroll
@@ -869,26 +898,34 @@ local function CreateBrowserFrame()
                             
                             if not btn.browserGlow then
                                 local glow = btn:CreateTexture(nil, "OVERLAY")
-                                glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+                                glow:SetTexture("Interface\\\\Buttons\\\\UI-ActionButton-Border")
                                 glow:SetBlendMode("ADD")
-                                glow:SetVertexColor(1, 0.5, 0, 1) 
+                                glow:SetVertexColor(1, 0.5, 0, 1)
                                 glow:SetPoint("CENTER", btn, "CENTER", 0, 0)
                                 glow:SetSize(btn:GetWidth() * 2, btn:GetHeight() * 2)
+                                
                                 local ag = glow:CreateAnimationGroup()
                                 local a1 = ag:CreateAnimation("Alpha")
-                                a1:SetChange(-1) a1:SetDuration(1) a1:SetOrder(1)
+                                a1:SetChange(-1)
+                                a1:SetDuration(1)
+                                a1:SetOrder(1)
                                 ag:SetLooping("REPEAT")
+                                
                                 btn.browserGlow = glow
                                 btn.browserGlowAnim = ag
                             end
                             btn.browserGlow:Show()
                             btn.browserGlowAnim:Play()
                             C_Timer.After(5, function() 
-                                if btn.browserGlow then btn.browserGlow:Hide() btn.browserGlowAnim:Stop() end 
+                                if btn.browserGlow then 
+                                    btn.browserGlow:Hide() 
+                                    btn.browserGlowAnim:Stop() 
+                                end 
                             end)
                         end
                     end
                 end)
+
                 
                 self.rows[i] = row
             end
@@ -926,51 +963,46 @@ local function CreateBrowserFrame()
     local function AddCheck(varName, label, onClick)
         local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
         cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -1)
+        
         local text = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         text:SetPoint("LEFT", cb, "RIGHT", 5, 1)
         text:SetText(label)
-        cb:SetScript("OnClick", onClick)
-        if EHTweaksDB and EHTweaksDB[varName] then cb:SetChecked(true) end
+        
+        cb:SetScript("OnClick", function(self)
+             -- 3.3.5 FIX: GetChecked returns 1 or nil. Force boolean true/false.
+             local isChecked = (self:GetChecked() == 1)
+             EHTweaksDB[varName] = isChecked
+             
+             if onClick then onClick(self, isChecked) end
+        end)
+        
+        -- Load Initial State correctly using boolean comparison
+        cb:SetChecked(EHTweaksDB[varName])
+        
         lastObj = cb
         return cb
     end
 
-    AddCheck("enableFilters", "Enhance Project Ebonhold with Filters", function(s) EHTweaksDB.enableFilters = s:GetChecked() end)
-    AddCheck("enableChatLinks", "Enhance Project Ebonhold with Chat Links", function(s) EHTweaksDB.enableChatLinks = s:GetChecked() end)
-    AddCheck("enableTracker", "Enhance Project Ebonhold with Objective Tracker", function(s) EHTweaksDB.enableTracker = s:GetChecked() end)
+    AddCheck("enableFilters", "Enhance Project Ebonhold with Filters")
+    AddCheck("enableChatLinks", "Enhance Project Ebonhold with Chat Links")
+    AddCheck("enableTracker", "Enhance Project Ebonhold with Objective Tracker")
     
-    local mmCb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
-    mmCb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -1)
-    local mmText = mmCb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    mmText:SetPoint("LEFT", mmCb, "RIGHT", 5, 1)
-    mmText:SetText("Show Minimap Button")
-    mmCb:SetScript("OnClick", function(self)
-        if EHTweaksDB then
-            EHTweaksDB.minimapButtonHidden = not self:GetChecked()
-            if EHTweaksDB.minimapButtonHidden then
-                if EHTweaks_HideMinimapButton then EHTweaks_HideMinimapButton() end
-            else
-                if EHTweaks_ShowMinimapButton then EHTweaks_ShowMinimapButton() end
-            end
+    -- Special case for Minimap Button (custom behavior)
+    AddCheck("minimapButtonHidden", "Hide Minimap Button", function(self, isChecked)
+        if isChecked then
+            if EHTweaks_HideMinimapButton then EHTweaks_HideMinimapButton() end
+        else
+            if EHTweaks_ShowMinimapButton then EHTweaks_ShowMinimapButton() end
         end
     end)
-    if EHTweaksDB then mmCb:SetChecked(not EHTweaksDB.minimapButtonHidden) end
-    lastObj = mmCb
     
-    AddCheck("enableLockedEchoWarning", "Warn on Death if Echo Locked", function(s) EHTweaksDB.enableLockedEchoWarning = s:GetChecked() end)
-    
-    -- In the Settings Frame section:
-	AddCheck("showDraftFavorites", "Show 'FAVOURED' on Draft Cards", function(s) 
-	    EHTweaksDB.showDraftFavorites = s:GetChecked() 
-	end)
+    AddCheck("enableLockedEchoWarning", "Warn on Death if Echo Locked")
+	AddCheck("showDraftFavorites", "Show 'FAVOURED' on Draft Cards")
 
-	AddCheck("showEmpowermentFavorites", "Show markers in 'My Echoes'", function(s) 
-	    EHTweaksDB.showEmpowermentFavorites = s:GetChecked()
-	    -- Immediate refresh of the grid
+	AddCheck("showEmpowermentFavorites", "Show markers in 'My Echoes'", function(self, isChecked) 
 	    if HookEchoButtons then HookEchoButtons() end
 	end)
 
-    
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
     reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -30)
@@ -1146,6 +1178,18 @@ local function CreateBrowserFrame()
     f:UpdateLayout()
     return f
 end
+
+function EHTweaks_RefreshBrowser()
+    -- Mark data as dirty so it rebuilds the list (re-checking favorites)
+    isDataDirty = true
+    
+    -- If the browser frame is visible, refresh the scroll view immediately
+    if browserFrame and browserFrame:IsShown() then
+        -- This function (RefreshData/UpdateScroll) handles rebuilding if isDataDirty is true
+        if UpdateScroll then UpdateScroll() end 
+    end
+end
+
 
 SLASH_EHTBROWSER1 = "/eht"
 SlashCmdList["EHTBROWSER"] = function(msg)
