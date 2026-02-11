@@ -1,6 +1,7 @@
 _G.ETHTweaks_OptionalDB_Data = {
-version = "v1.1",
-changelog = "|cff00ff00• Starter Echo database.",
+version = "v1.2",
+contributors = "Deidre, Detaz, Hex, mpekas",
+changelog = "|cff00ff00• Starter (100) Echo database.",
 
-data ="!EHT1!9izswmaimi0luxqgD4(FWQTcUlp9Nab1b8ySJpNce2g)kYgB7)ja3tG18kFjgtmMyg8klzrab7c2f8umprJltowSa0g9Gfz4co5jZNvPOWFWHGlbtpNh1VtEo3(LPfdTAxADIIfLAFgsuY0fhyaLpLlyAvpBMZq7UZDpS3wW2pwuTtJbJHzfCGN(LwCbBLZHPWSALHV9kfJMJjp7dLHlP14MpWuy(S6bMIkjsUxikLgSRc9DoDUuxmvd9hRB9rkzy6N394l",
+data ="!EHT1!9q5Yv0rmim0gkl4VTF9FHLjX66DCgZibcbHzv3)8)8fez8l)xGzNF2)dk)(u1ZnWCJNIBWu7Bqf9V4M8caRlGD43NM6aGBfCSBqhXnhR0FnTjaJLOOpG8Os1Z7tPPcRgJCwWEbYQlQ4qY0GN8MtSmyxix5d5GKbqFGDL80LYjD(RK)s6t)1oX9VkLJPAE26PAaNZaxsNnKLzVj5MKxK8HcBGck(eshuJJWXcvgFLOO4nMYga30PhXEkCAZOVe7TP5E60GJZtIIolE6vHmLD17TPPZmkOkSnwbodCHGxWvIG7pUu7uyJBdUYnCH(u4ncJ6bDgJ0m6lZHEVuYlgUgwcBETJsEHqzpBSPsnkdBCZChdW6T7GtyjPRDamLA0jZlBybXLvF54mzJBtnBsFkxtNPvzeFcvE9p4wwkNffFTDWrliw2y1du1faQoT8n4WjLDaoY92bA4UWRQReb77ZQ4IeR57eCKbWC9xFrQtpk5i2OpVlByr3f4O9RO0iimDfTm1fX3MY9lbu0yr3n4WjoN1ZeLptOiXjWO8DTzZ9zwpJIlKLkJVtBk5)Tm(3p",
 }

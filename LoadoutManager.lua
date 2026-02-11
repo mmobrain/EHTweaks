@@ -843,8 +843,32 @@ StaticPopupDialogs["EHTWEAKS_DELETE_CONFIRM"] = {
     text = "Delete this loadout forever?", button1 = "Yes", button2 = "No",
     OnAccept = function()
         local item = LM.listData[LM.selectedIndex]
-        local db = item.isBackup and GetBackupDB() or GetClassLoadoutDB()
-        for k,v in ipairs(db) do if v.timestamp == item.timestamp then table.remove(db, k) LM.selectedIndex = 0 EHTweaks_RefreshLoadoutList() break end end
+        
+        -- Identify the correct DB based on item properties
+        local db
+        if item.isBackup then
+            db = GetBackupDB()
+        elseif item.savedForClass then
+            -- Item belongs to specific class (possibly not current player class)
+            if EHTweaksDB.loadouts and EHTweaksDB.loadouts[item.savedForClass] then
+                db = EHTweaksDB.loadouts[item.savedForClass]
+            else
+                -- Fallback to current class if structure is invalid
+                db = GetClassLoadoutDB()
+            end
+        else
+            -- Legacy or current class default
+            db = GetClassLoadoutDB()
+        end
+
+        for k,v in ipairs(db) do 
+            if v.timestamp == item.timestamp then 
+                table.remove(db, k) 
+                LM.selectedIndex = 0 
+                EHTweaks_RefreshLoadoutList() 
+                break 
+            end 
+        end
     end,
     timeout = 0, whileDead = true, hideOnEscape = true
 }

@@ -49,7 +49,8 @@ local DEFAULTS = {
     offeredOptionalDB = nil,
     minimapButtonAngle = 200, -- Default position in degrees
     minimapButtonHidden = false,
-    enableLockedEchoWarning = true
+    enableLockedEchoWarning = true,
+    enableIntensityWarning = true
 }
 
 -- --- State ---
@@ -76,6 +77,101 @@ local function InitializeDB()
     -- Initialize Loadout Tables
     if not EHTweaksDB.loadouts then EHTweaksDB.loadouts = {} end
     if not EHTweaksDB.backups then EHTweaksDB.backups = {} end
+end
+
+
+-- =========================================================
+-- SECTION: INTENSITY WARNING SYSTEM
+-- =========================================================
+
+local INTENSITY_THRESHOLDS = { 75, 200, 275, 375, 475 }
+local lastIntensityCheck = nil
+local intensityAlertFrame = nil
+
+local function CreateIntensityAlertFrame()
+    if intensityAlertFrame then return intensityAlertFrame end
+    
+    local f = CreateFrame("Frame", "EHTweaks_IntensityAlert", UIParent)
+    f:SetSize(512, 100)
+    f:SetPoint("CENTER", 0, 120) -- Positioned slightly above center
+    f:SetFrameStrata("HIGH")
+    f:Hide()
+    
+    local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    text:SetPoint("CENTER")
+    text:SetFont("Fonts\\FRIZQT__.TTF", 32, "OUTLINE")
+    f.text = text
+    
+    local ag = f:CreateAnimationGroup()
+    
+    -- Fade In
+    local a1 = ag:CreateAnimation("Alpha")
+    a1:SetChange(1) 
+    a1:SetDuration(0.2)
+    a1:SetOrder(1)
+    
+    -- Hold (simulated by delay on next anim)
+    -- Fade Out
+    local a2 = ag:CreateAnimation("Alpha")
+    a2:SetChange(-1)
+    a2:SetStartDelay(2.0)
+    a2:SetDuration(1.0)
+    a2:SetOrder(2)
+    
+    ag:SetScript("OnFinished", function() f:Hide() end)
+    f.anim = ag
+    
+    intensityAlertFrame = f
+    return f
+end
+
+local function TriggerIntensityAlert(level, isReached)
+    if not intensityAlertFrame then CreateIntensityAlertFrame() end
+    
+    local f = intensityAlertFrame
+    f.anim:Stop()
+    f:SetAlpha(0)
+    f:Show()
+    
+    if isReached then
+        f.text:SetText("Intensity Level " .. level .. " Reached!")
+        f.text:SetTextColor(0.8, 0.5, 0.0)
+    else
+        f.text:SetText("Intensity Level " .. level .. " Lost")
+        f.text:SetTextColor(0.0, 0.6, 0.8)
+    end
+    
+    f.anim:Play()
+end
+
+local function CheckIntensityThresholds(newInt)
+    if not EHTweaksDB.enableIntensityWarning then return end
+    
+    -- Initialize on first run without triggering
+    if lastIntensityCheck == nil then 
+        lastIntensityCheck = newInt 
+        return 
+    end
+    
+    if lastIntensityCheck == newInt then return end
+
+    for i, thresh in ipairs(INTENSITY_THRESHOLDS) do
+        -- Logic: Use +1 for reached (except last one) and -1 for lost
+        local reachT = (i < #INTENSITY_THRESHOLDS) and (thresh + 1) or thresh
+        local lostT = thresh - 1
+        
+        -- Check Reached (Crossed upwards past reach threshold)
+        if lastIntensityCheck < reachT and newInt >= reachT then
+             TriggerIntensityAlert(i, true)
+        end
+        
+        -- Check Lost (Crossed downwards past lost threshold)
+        if lastIntensityCheck > lostT and newInt <= lostT then
+             TriggerIntensityAlert(i, false)
+        end
+    end
+    
+    lastIntensityCheck = newInt
 end
 
 -- --- Global Loadout Utilities ---
@@ -901,6 +997,9 @@ local function ImportStarterDB()
         local count, err = EHTweaks_ImportEchoes(code)
         if count > 0 then
             print("|cff00ff00EHTweaks:|r Starter Database imported (" .. count .. " echoes).")
+            if starter.contributors then
+                print("|cff00ff00EHTweaks:|r This Echoes DB was created thanks to: " .. starter.contributors)
+            end
         elseif err then
             print("|cffff0000EHTweaks:|r Starter DB Import failed: " .. err)
         end
@@ -1722,6 +1821,15 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                 if EHTweaksDB.enableChatLinks then HookEchoButtons() end
             end)
         end
+	  
+	  -- Hook Intensity for Warning System
+        if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateIntensity then
+            hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateIntensity", function(data)
+                if data and data.intensity then
+                    CheckIntensityThresholds(data.intensity)
+                end
+            end)
+        end
 
         if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateData then
              hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateData", function()
@@ -1828,7 +1936,7 @@ local miniBarFrame = nil
 local lastRunData = { soulPoints = 0, soulPointsMultiplier = 0 }
 local lastIntData = { intensity = 0 }
 local MAX_INTENSITY = 475
-local INTENSITY_LEVELS = { 75, 200, 275, 375, 475 }
+--local INTENSITY_THRESHOLDS = { 75, 200, 275, 375, 475 }
 
 local miniScanner = CreateFrame("GameTooltip", "EHTweaksMiniScanner", nil, "GameTooltipTemplate")
 miniScanner:SetOwner(WorldFrame, "ANCHOR_NONE")
@@ -2007,7 +2115,7 @@ local function CreateMiniRunBar(mainFrame)
         if f.markers then return end
         f.markers = {}
         
-        for _, thresh in ipairs(INTENSITY_LEVELS) do
+        for _, thresh in ipairs(INTENSITY_THRESHOLDS) do
             local ratio = thresh / MAX_INTENSITY
             local xPos = w * ratio
             
@@ -2025,7 +2133,7 @@ local function CreateMiniRunBar(mainFrame)
         if f.markers then 
              local w = bar:GetWidth()
              for i, line in ipairs(f.markers) do
-                 local thresh = INTENSITY_LEVELS[i]
+                 local thresh = INTENSITY_THRESHOLDS[i]
                  if thresh then
                      local ratio = thresh / MAX_INTENSITY
                      line:SetPoint("CENTER", bar, "LEFT", w * ratio, -8)

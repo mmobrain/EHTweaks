@@ -493,7 +493,7 @@ local function UpdateScroll()
     else
         if browserFrame.scroll then browserFrame.scroll:Show() end
         if browserFrame.searchBox then browserFrame.searchBox:Show() end
-        if browserFrame.searchLabel then browserFrame.searchLabel:Hide() end
+        if browserFrame.searchLabel then browserFrame.searchLabel:Show() end
         if browserFrame.listContainer then browserFrame.listContainer:Show() end
         if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
         if browserFrame.importFrame then browserFrame.importFrame:Hide() end
@@ -898,7 +898,7 @@ local function CreateBrowserFrame()
                             
                             if not btn.browserGlow then
                                 local glow = btn:CreateTexture(nil, "OVERLAY")
-                                glow:SetTexture("Interface\\\\Buttons\\\\UI-ActionButton-Border")
+                                glow:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
                                 glow:SetBlendMode("ADD")
                                 glow:SetVertexColor(1, 0.5, 0, 1)
                                 glow:SetPoint("CENTER", btn, "CENTER", 0, 0)
@@ -1003,6 +1003,8 @@ local function CreateBrowserFrame()
 	    if HookEchoButtons then HookEchoButtons() end
 	end)
 
+    AddCheck("enableIntensityWarning", "Warn on Intensity level change") -- Added new checkbox
+
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
     reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -30)
@@ -1098,7 +1100,10 @@ local function CreateBrowserFrame()
             if starter and starter.data then
                 local count, err = EHTweaks_ImportEchoes(starter.data)
                 if count > 0 then
-                    print("|cff00ff00EHTweaks:|r Merged Starter DB (" .. count .. " echoes added/updated).")
+                    print("|cff00ff00EHTweaks:|r Merged Starter DB (" .. count .. " unique echoes ID's added/updated).")
+                    if starter.contributors then
+                         print("|cff00ff00EHTweaks:|r This Echoes DB was created thanks to: " .. starter.contributors)
+                    end
                     RefreshData()
                 else
                     if err == "No new data (Database already up-to-date)" then
@@ -1124,7 +1129,10 @@ local function CreateBrowserFrame()
                     if starter and starter.data then
                         local count, err = EHTweaks_ImportEchoes(starter.data)
                         if count > 0 then
-                            print("|cff00ff00EHTweaks:|r Database overridden with Starter DB (" .. count .. " echoes).")
+                            print("|cff00ff00EHTweaks:|r Database overridden with Starter DB (" .. count .. " unique echoes ID's).")
+                            if starter.contributors then
+                                 print("|cff00ff00EHTweaks:|r This Echoes DB was created thanks to: " .. starter.contributors)
+                            end
                             RefreshData()
                         else
                             print("|cffff0000EHTweaks:|r Override failed: " .. (err or "Unknown"))
@@ -1201,4 +1209,31 @@ SlashCmdList["EHTBROWSER"] = function(msg)
     local f = CreateBrowserFrame()
     f:Show()
     UpdateScroll()
+end
+
+-- SLASH COMMAND FOR DEBUGGING INTENSITY
+SLASH_EHTTEST1 = "/ehttest"
+SlashCmdList["EHTTEST"] = function(msg)
+    local val = tonumber(msg)
+    if not val then
+        print("|cffFFFF00Usage: /ehttest <0-475>|r")
+        return
+    end
+
+    print("|cff00FF00EHTweaks:|r Simulating Intensity: " .. val)
+
+    -- Fake the data structure expected by UpdateIntensity
+    local fakeData = {
+        intensity = val,
+        areaNameReaper = "Debug Zone",
+        onCooldown = false
+    }
+
+    -- Call the PE function we hooked. 
+    -- This triggers our hook AND updates the real frame (if visible).
+    if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateIntensity then
+        ProjectEbonhold.PlayerRunUI.UpdateIntensity(fakeData)
+    else
+        print("Error: PE UI not found.")
+    end
 end
