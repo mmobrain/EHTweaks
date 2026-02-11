@@ -1210,30 +1210,3 @@ SlashCmdList["EHTBROWSER"] = function(msg)
     f:Show()
     UpdateScroll()
 end
-
--- SLASH COMMAND FOR DEBUGGING INTENSITY
-SLASH_EHTTEST1 = "/ehttest"
-SlashCmdList["EHTTEST"] = function(msg)
-    local val = tonumber(msg)
-    if not val then
-        print("|cffFFFF00Usage: /ehttest <0-475>|r")
-        return
-    end
-
-    print("|cff00FF00EHTweaks:|r Simulating Intensity: " .. val)
-
-    -- Fake the data structure expected by UpdateIntensity
-    local fakeData = {
-        intensity = val,
-        areaNameReaper = "Debug Zone",
-        onCooldown = false
-    }
-
-    -- Call the PE function we hooked. 
-    -- This triggers our hook AND updates the real frame (if visible).
-    if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateIntensity then
-        ProjectEbonhold.PlayerRunUI.UpdateIntensity(fakeData)
-    else
-        print("Error: PE UI not found.")
-    end
-end
