@@ -50,7 +50,8 @@ local DEFAULTS = {
     minimapButtonAngle = 200, -- Default position in degrees
     minimapButtonHidden = false,
     enableLockedEchoWarning = true,
-    enableIntensityWarning = true
+    enableIntensityWarning = true,
+    enableShadowFissureWarning = true
 }
 
 -- --- State ---
@@ -61,6 +62,9 @@ local filterBox = nil
 local echoFilterBox = nil
 local matchedNodes = {} 
 local minimapButton = nil
+-- Shared state for Intensity/Run data (Accessible by Hazard System and Minimizer)
+local lastRunData = { soulPoints = 0, soulPointsMultiplier = 0 }
+local lastIntData = { intensity = 0 }
 
 -- LOADOUT TRACKING STATE
 local activeLoadoutId = nil
@@ -126,20 +130,38 @@ local function CreateIntensityAlertFrame()
 end
 
 local function TriggerIntensityAlert(level, isReached)
+    -- Ensure frame exists (used for fallback or standard alerts)
     if not intensityAlertFrame then CreateIntensityAlertFrame() end
     
+    local msg = ""
+    local r, g, b = 1, 1, 1
+    
+    if isReached then
+        msg = "Intensity Level " .. level .. " Reached!"
+        r, g, b = 0.8, 0.5, 0.0 -- Orange/Gold
+    else
+        msg = "Intensity Level " .. level .. " Lost"
+        r, g, b = 0.0, 0.6, 0.8 -- Blue/Teal
+    end
+    
+    -- Logic: Use Raid Warning ONLY for Level 2+ GAINS
+    if isReached and level >= 2 then
+        if RaidWarningFrame and RaidNotice_AddMessage then
+            local colorInfo = { r = r, g = g, b = b }
+            RaidNotice_AddMessage(RaidWarningFrame, msg, colorInfo)
+            PlaySound("RaidWarning") 
+            return
+        end
+    end
+
+    -- Logic: Use Custom Frame for Level 1 Gains AND All Losses
     local f = intensityAlertFrame
     f.anim:Stop()
     f:SetAlpha(0)
     f:Show()
     
-    if isReached then
-        f.text:SetText("Intensity Level " .. level .. " Reached!")
-        f.text:SetTextColor(0.8, 0.5, 0.0)
-    else
-        f.text:SetText("Intensity Level " .. level .. " Lost")
-        f.text:SetTextColor(0.0, 0.6, 0.8)
-    end
+    f.text:SetText(msg)
+    f.text:SetTextColor(r, g, b)
     
     f.anim:Play()
 end
@@ -174,11 +196,107 @@ local function CheckIntensityThresholds(newInt)
     lastIntensityCheck = newInt
 end
 
+-- =========================================================
+-- SECTION: HAZARD WARNING SYSTEM (Custom Mechanics)
+-- =========================================================
+
+local hazardAlertFrame = nil
+
+local function CreateHazardAlertFrame()
+    if hazardAlertFrame then return hazardAlertFrame end
+    
+    local f = CreateFrame("Frame", "EHTweaks_HazardAlert", UIParent)
+    f:SetSize(512, 120)
+    f:SetPoint("CENTER", 0, 200) -- Positioned higher, prominent
+    f:SetFrameStrata("FULLSCREEN_DIALOG")
+    f:Hide()
+    
+    local text = f:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    text:SetPoint("CENTER")
+    -- Use a fixed large size (36) regardless of UI scale
+    text:SetFont("Fonts\\FRIZQT__.TTF", 36, "OUTLINE") 
+    f.text = text
+    
+    local ag = f:CreateAnimationGroup()
+    
+    -- Pop In (Scale Up)
+    local aScale = ag:CreateAnimation("Scale")
+    aScale:SetScale(1.5, 1.5)
+    aScale:SetDuration(0.1)
+    aScale:SetOrder(1)
+    aScale:SetSmoothing("OUT")
+    
+    -- Scale Back to Normal
+    local aScale2 = ag:CreateAnimation("Scale")
+    aScale2:SetScale(0.66, 0.66) -- 1/1.5
+    aScale2:SetDuration(0.15)
+    aScale2:SetOrder(2)
+    aScale2:SetSmoothing("IN")
+
+    -- Fade In
+    local aAlpha = ag:CreateAnimation("Alpha")
+    aAlpha:SetChange(1) 
+    aAlpha:SetDuration(0.1)
+    aAlpha:SetOrder(1)
+
+    -- Hold then Fade Out (Shortened for 5s spawn frequency)
+    local aFade = ag:CreateAnimation("Alpha")
+    aFade:SetChange(-1)
+    aFade:SetStartDelay(1.5) 
+    aFade:SetDuration(0.5)
+    aFade:SetOrder(3)
+    
+    ag:SetScript("OnFinished", function() f:Hide() end)
+    f.anim = ag
+    
+    hazardAlertFrame = f
+    return f
+end
+
+local function TriggerHazardAlert(text)
+    -- 1. Custom Huge Frame
+    if not hazardAlertFrame then CreateHazardAlertFrame() end
+    local f = hazardAlertFrame
+    f.anim:Stop()
+    f:SetAlpha(0)
+    f:Show()
+    
+    f.text:SetText(text)
+    f.text:SetTextColor(1, 0.2, 0.2) -- Bright Red
+    
+    f.anim:Play()
+
+    -- 2. Audible Alert
+	PlaySound("RaidWarning", "Master")    
+    
+    -- 3. Chat Backup
+    print("|cffff0000[EHT WARNING]|r " .. text)
+end
+
+local hazardFrame = CreateFrame("Frame")
+hazardFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+hazardFrame:SetScript("OnEvent", function(self, event, ...)
+    local timestamp, eventType, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags, spellId, spellName = ...
+
+    -- [SHADOW FISSURE]
+    -- ID: 95074 (Summon Event)
+    -- Mechanic: At intensity >= 275* server forces player to summon the fissure at their feet so we hook this event to warn about it. We will use lower int lvl as threshold because when loosing intensity lvl SF can spawn up to 5 sec after.   
+    if eventType == "SPELL_SUMMON" and spellId == 95074 then
+        if EHTweaksDB.enableShadowFissureWarning then
+            local intensity = lastIntData.intensity or 0
+            if intensity >= 250 then
+                if srcGUID == UnitGUID("player") then
+                    TriggerHazardAlert("Shadow Fissure under YOU! MOVE!")
+                end
+            end
+        end
+    end
+end)
+
 -- --- Global Loadout Utilities ---
 
 function EHTweaks_GetActiveLoadoutInfo()
-    local name = "Default"
-    -- Try to find the name that matches the current active ID
+    local name = "Default"    
     if activeLoadoutId and knownLoadouts then
         for k, v in pairs(knownLoadouts) do
             if v == activeLoadoutId then
@@ -1933,8 +2051,6 @@ end
 -- =============================================================
 
 local miniBarFrame = nil
-local lastRunData = { soulPoints = 0, soulPointsMultiplier = 0 }
-local lastIntData = { intensity = 0 }
 local MAX_INTENSITY = 475
 --local INTENSITY_THRESHOLDS = { 75, 200, 275, 375, 475 }
 
@@ -2297,5 +2413,3 @@ loader:RegisterEvent("PLAYER_ENTERING_WORLD")
 loader:SetScript("OnEvent", function() 
     InitMinimizer(0) 
 end)
-
-

@@ -200,44 +200,49 @@ local function BuildPerkData()
         if granted then
             for spellName, instances in pairs(granted) do
                 if instances and #instances > 0 then
-                    -- Sum all stacks and find highest quality
-                    local totalStack = 0
-                    local highestQuality = 0
-                    local primarySpellId = nil
-                    local icon = nil
+                    -- Group by SpellID to separate different qualities/IDs of the same spell name
+                    local idGroups = {}
                     
                     for _, info in ipairs(instances) do
-                        totalStack = totalStack + (info.stack or 1)
-                        
-                        if (info.quality or 0) > highestQuality then
-                            highestQuality = info.quality or 0
-                            primarySpellId = info.spellId
-                        end
-                        
-                        if not primarySpellId then
-                            primarySpellId = info.spellId
+                        local sID = info.spellId
+                        if sID then
+                            if not idGroups[sID] then
+                                idGroups[sID] = {
+                                    spellId = sID,
+                                    quality = info.quality or 0,
+                                    stack = 0,
+                                    name = spellName
+                                }
+                            end
+                            -- Accumulate stacks for this specific ID
+                            idGroups[sID].stack = idGroups[sID].stack + (info.stack or 1)
                         end
                     end
                     
-                    if primarySpellId then
-                        local _, _, iconTex = GetSpellInfo(primarySpellId)
+                    -- Convert groups to list rows
+                    for sID, group in pairs(idGroups) do
+                        local _, _, iconTex = GetSpellInfo(sID)
                         table.insert(data, {
                             isPerk = true,
-                            name = spellName,
+                            name = group.name,
                             icon = iconTex,
-                            spellId = primarySpellId,
-                            stack = totalStack,
-                            quality = highestQuality
+                            spellId = sID,
+                            stack = group.stack,
+                            quality = group.quality
                         })
                     end
                 end
             end
         end
     end
+    
+    -- Sort: Quality DESC -> Name ASC -> Stack DESC
     table.sort(data, function(a, b) 
         if a.quality ~= b.quality then return a.quality > b.quality end
-        return a.name < b.name 
+        if a.name ~= b.name then return a.name < b.name end
+        return a.stack > b.stack
     end)
+    
     return data
 end
 
@@ -1003,7 +1008,9 @@ local function CreateBrowserFrame()
 	    if HookEchoButtons then HookEchoButtons() end
 	end)
 
-    AddCheck("enableIntensityWarning", "Warn on Intensity level change") -- Added new checkbox
+    AddCheck("enableIntensityWarning", "Warn on Intensity level change") 
+    
+    AddCheck("enableShadowFissureWarning", "Warn when Shadow Fissure (red circle) is spawned")
 
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
@@ -1013,7 +1020,7 @@ local function CreateBrowserFrame()
 
     local warn = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     warn:SetPoint("TOPLEFT", reloadBtn, "BOTTOMLEFT", 0, -10)
-    warn:SetText("Note: Browser features (this window) will remain active\nregardless of these settings.")
+    warn:SetText("Note: Browser features (this window) will remain active regardless of these settings.")
     warn:SetTextColor(0.6, 0.6, 0.6)
 
     -- --- IMPORT/EXPORT FRAME ---

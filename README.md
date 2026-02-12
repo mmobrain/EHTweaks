@@ -62,6 +62,11 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 ### 🧭 Enhanced Objective Tracker
 *   Integrated the custom Objectives system into the Project Ebonhold Soul Ash HUD for better tracking.
 
+### ☣ Hazard Warning
+*   Warns immediately upon (own) Shadow Fissure (red circle) spawn
+
+![ETH tweaks 4](https://raw.githubusercontent.com/mmobrain/stuffforstuff/refs/heads/main/ETHtweaks_stuff/3.jpg)
+
 ### ↗️ Movable HUD elements
 *   The **"Choose an Echo"** and **"Hide/Show"** buttons are now movable via **Shift+Drag** and share the same saved coordinate.
 *   The **Soul Ash HUD** (`playerRunFrame`) position is saved across sessions.

@@ -1,7 +1,7 @@
 _G.ETHTweaks_OptionalDB_Data = {
-version = "v1.2",
-contributors = "Deidre, Detaz, Hex, mpekas",
-changelog = "|cff00ff00• Starter (100) Echo database.",
+version = "v1.3",
+contributors = "Deidre, Detaz, Disarrayed, Hex, mpekas",
+changelog = "|cff00ff00• Starter (106) Echo database.",
 
-data ="!EHT1!9q5Yv0rmim0gkl4VTF9FHLjX66DCgZibcbHzv3)8)8fez8l)xGzNF2)dk)(u1ZnWCJNIBWu7Bqf9V4M8caRlGD43NM6aGBfCSBqhXnhR0FnTjaJLOOpG8Os1Z7tPPcRgJCwWEbYQlQ4qY0GN8MtSmyxix5d5GKbqFGDL80LYjD(RK)s6t)1oX9VkLJPAE26PAaNZaxsNnKLzVj5MKxK8HcBGck(eshuJJWXcvgFLOO4nMYga30PhXEkCAZOVe7TP5E60GJZtIIolE6vHmLD17TPPZmkOkSnwbodCHGxWvIG7pUu7uyJBdUYnCH(u4ncJ6bDgJ0m6lZHEVuYlgUgwcBETJsEHqzpBSPsnkdBCZChdW6T7GtyjPRDamLA0jZlBybXLvF54mzJBtnBsFkxtNPvzeFcvE9p4wwkNffFTDWrliw2y1du1faQoT8n4WjLDaoY92bA4UWRQReb77ZQ4IeR57eCKbWC9xFrQtpk5i2OpVlByr3f4O9RO0iimDfTm1fX3MY9lbu0yr3n4WjoN1ZeLptOiXjWO8DTzZ9zwpJIlKLkJVtBk5)Tm(3p",
+data ="!EHT1!9q5w2bqiim0nu)a5L6S)xy1wZ1)8mdecHaUzzvFJFop8W)I)Ey2(Z()roU)kR((Wgg)YVp6CDFKE953GNayEbS8X9xDUbWLEST7JY9BmwQS6YeG(uLOi99a(e3FfMiw2gvFs1tqwDr6BcMgCh3y8Pr1fYz8q2jyaC0OgQD6kvmXGScYQiRjCovmM4CVMQLBWz3KL0zdzPxlcUiyLEDAq)wcXWUqddkAJASfoMlACYxL4nMIcoZ42EDQWPmJIk51pc()IzmObBjlLPsurYVqEdnL9H69YcyiDQbXs8pwcGkRyGYNVIYiWLfngVQRgmXyxgvpK(0pflXT4gmCcYQ37wFP36lvIFoK1AYC3nnVC0qd)J1bQQyy5n8zdoA)YpzPvyzADtl1EQUWtJVeYQpHgSPKtnco2orJiypv8jholASYmfnYTgU5chLX5IzdvxSOvyAXypfYZNhBX(UfWNIvgNzHeC)CLiUmCboCAA5GJ2c6fTSHnoyw4WWjXuCUyfGddLXGUa3YcVbhg757cjw9vcoSNY4UyMAdowzKLZTLch(QaNjMeUKmuN6HwgZ4nliM3vRf35znpqW7AZ6Wd5ZW93d",
 }
