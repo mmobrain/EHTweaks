@@ -53,7 +53,8 @@ local DEFAULTS = {
     enableIntensityWarning = true,
     enableShadowFissureWarning = true,
     chatWarnings = false,
-    chatInfo = false
+    chatInfo = false,
+    enableModernDraft = false
 }
 
 -- --- State ---
@@ -903,6 +904,276 @@ local function CreateEchoFilterFrame()
     echoFilterBox = eb
 end
 
+-- ==============================
+-- EHT: EmpowermentFrame tweaks
+-- Shift+Drag move + save position + Close (X) button
+-- ==============================
+
+local function EHT_RestoreEmpowermentFramePosition()
+    if not EHTweaksDB or not EHTweaksDB.empowermentFramePos then return end
+
+    local frame = _G.ProjectEbonholdEmpowermentFrame
+    if not frame then return end
+
+    local p = EHTweaksDB.empowermentFramePos
+    -- p = { point, relativePoint, x, y }
+    if not p[1] or not p[2] then return end
+
+    frame:ClearAllPoints()
+    frame:SetPoint(p[1], UIParent, p[2], p[3] or 0, p[4] or 0)
+end
+
+local function EHT_SaveEmpowermentFramePosition(frame)
+    if not frame then return end
+    if not EHTweaksDB then EHTweaksDB = {} end
+
+    local point, _, relativePoint, xOfs, yOfs = frame:GetPoint(1)
+    if not point or not relativePoint then return end
+
+    EHTweaksDB.empowermentFramePos = { point, relativePoint, xOfs or 0, yOfs or 0 }
+end
+
+local function EHT_InstallEmpowermentCloseButton(frame)
+    if not frame then return end
+
+    -- Create ONCE as top-level (so it can sit above any addon art/frames)
+    if not frame.ehtCloseBtn then
+        local close = CreateFrame("Button", "EHT_EmpowermentCloseBtn", UIParent, "UIPanelCloseButton")
+        close:SetSize(32, 32)
+        close:SetFrameStrata("TOOLTIP")
+        close:SetFrameLevel(10000)
+        if close.SetToplevel then close:SetToplevel(true) end
+
+        close:SetScript("OnClick", function()
+            if _G.ToggleEmpowermentPanel then
+                _G.ToggleEmpowermentPanel()
+            else
+                frame:Hide()
+            end
+        end)
+
+        close:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText("Close Echoes")
+            GameTooltip:Show()
+        end)
+        close:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+
+        frame.ehtCloseBtn = close
+
+        -- Keep visibility synced with the Empowerment frame
+        frame:HookScript("OnShow", function(self)
+            if self.ehtCloseBtn then
+                self.ehtCloseBtn:ClearAllPoints()
+                self.ehtCloseBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -6)
+                self.ehtCloseBtn:Show()
+                if self.ehtCloseBtn.Raise then self.ehtCloseBtn:Raise() end
+            end
+        end)
+
+        frame:HookScript("OnHide", function(self)
+            if self.ehtCloseBtn then self.ehtCloseBtn:Hide() end
+        end)
+
+        print("|cff00FF00EHTweaks:|r Close button installed on Empowerment frame")
+    end
+
+    -- Re-anchor every install call (covers move / reload / early creation)
+    frame.ehtCloseBtn:ClearAllPoints()
+    frame.ehtCloseBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+
+    -- If frame is already visible, show button immediately
+    if frame:IsShown() then
+        frame.ehtCloseBtn:Show()
+        if frame.ehtCloseBtn.Raise then frame.ehtCloseBtn:Raise() end
+    else
+        frame.ehtCloseBtn:Hide()
+    end
+end
+
+local function EHT_SetupEmpowermentFrameMoveAndSave()
+    local frame = _G.ProjectEbonholdEmpowermentFrame
+    if not frame or frame.EHT_MoverInstalled then return end
+
+    frame:SetClampedToScreen(true)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+
+    -- ProjectEbonhold sets drag scripts directly to StartMoving/StopMovingOrSizing,
+    -- so we override to enforce Shift-only movement. [file:3]
+    frame:SetScript("OnDragStart", function(self)
+        if IsShiftKeyDown() then
+            self:StartMoving()
+            self.ehtIsMoving = true
+            if self.ehtCloseBtn and self.ehtCloseBtn.Raise then self.ehtCloseBtn:Raise() end
+        end
+    end)
+
+    frame:SetScript("OnDragStop", function(self)
+        if self.ehtIsMoving then
+            self:StopMovingOrSizing()
+            self.ehtIsMoving = false
+            EHT_SaveEmpowermentFramePosition(self)
+        end
+    end)
+
+    -- Ensure position + close button are applied every time it becomes visible.
+    frame:HookScript("OnShow", function(self)
+        EHT_RestoreEmpowermentFramePosition()
+        EHT_InstallEmpowermentCloseButton(self) -- will show/anchor overlay
+    end)
+
+    frame:HookScript("OnHide", function(self)
+        if self.ehtCloseBtn then self.ehtCloseBtn:Hide() end
+    end)
+
+    -- Install immediately (in case frame is already visible right now)
+    EHT_InstallEmpowermentCloseButton(frame)
+    EHT_RestoreEmpowermentFramePosition()
+
+    frame.EHT_MoverInstalled = true
+end
+
+
+-- Delayed init with retry logic
+function EHTweaks_InitEmpowermentFrameTweaks(tries)
+    tries = tries or 0
+
+    if _G.ProjectEbonholdEmpowermentFrame then
+        EHT_SetupEmpowermentFrameMoveAndSave()
+        return
+    end
+
+    if tries >= 20 then 
+        print("|cffFF0000EHTweaks:|r Failed to find ProjectEbonholdEmpowermentFrame after 10 seconds")
+        return 
+    end
+    
+    if CTimer and CTimer.After then
+        CTimer.After(0.5, function() EHTweaks_InitEmpowermentFrameTweaks(tries + 1) end)
+    end
+end
+
+local function EHT_After(sec, fn)
+    if CTimer and CTimer.After then return CTimer.After(sec, fn) end
+    if C_Timer and C_Timer.After then return C_Timer.After(sec, fn) end
+    if fn then fn() end
+end
+
+function EHTweaks_HookEmpowermentToggle(tries)
+    tries = tries or 0
+
+    if type(_G.ToggleEmpowermentPanel) == "function" then
+        if not _G.ToggleEmpowermentPanel_EHTHooked then
+            local orig = _G.ToggleEmpowermentPanel
+            _G.ToggleEmpowermentPanel = function(...)
+                local r = orig(...)
+                -- After toggle, frame is guaranteed created if it was needed. [file:3]
+                EHT_After(0, function() EHTweaks_InitEmpowermentFrameTweaks(0) end)
+                return r
+            end
+            _G.ToggleEmpowermentPanel_EHTHooked = true
+        end
+
+        -- If frame already exists (created in ENTERING_WORLD), install immediately too. 
+        if _G.ProjectEbonholdEmpowermentFrame then
+            EHTweaks_InitEmpowermentFrameTweaks(0)
+        end
+        return
+    end
+
+    -- Toggle function not loaded yet; retry a bit.
+    if tries < 60 then
+        EHT_After(0.5, function() EHTweaks_HookEmpowermentToggle(tries + 1) end)
+    end
+end
+
+
+
+-- ==============================
+-- EHT: IntensityWarningFrame tweaks
+-- Shift+Drag move + save position
+-- ==============================
+
+local function EHT_RestoreIntensityWarningPosition()
+    if not EHTweaksDB or not EHTweaksDB.intensityWarningPos then return end
+
+    local frame = _G.IntensityWarningFrame
+    if not frame then return end
+
+    local p = EHTweaksDB.intensityWarningPos
+    -- p = { point, relativePoint, x, y }
+    if not p[1] or not p[2] then return end
+
+    frame:ClearAllPoints()
+    frame:SetPoint(p[1], UIParent, p[2], p[3] or 0, p[4] or 0)
+end
+
+local function EHT_SaveIntensityWarningPosition(frame)
+    if not frame then return end
+    if not EHTweaksDB then EHTweaksDB = {} end
+
+    local point, _, relativePoint, xOfs, yOfs = frame:GetPoint(1)
+    if not point or not relativePoint then return end
+
+    EHTweaksDB.intensityWarningPos = { point, relativePoint, xOfs or 0, yOfs or 0 }
+end
+
+local function EHT_SetupIntensityWarningMoveAndSave()
+    local frame = _G.IntensityWarningFrame
+    if not frame or frame.EHT_MoverInstalled then return end
+
+    frame:SetClampedToScreen(true)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:RegisterForDrag("LeftButton")
+
+    frame:SetScript("OnDragStart", function(self)
+        if IsShiftKeyDown() then
+            self:StartMoving()
+            self.ehtIsMoving = true
+        end
+    end)
+
+    frame:SetScript("OnDragStop", function(self)
+        if self.ehtIsMoving then
+            self:StopMovingOrSizing()
+            self.ehtIsMoving = false
+            EHT_SaveIntensityWarningPosition(self)
+        end
+    end)
+
+    -- Restore position when frame shows (it hides after unlock)
+    frame:HookScript("OnShow", function()
+        EHT_RestoreIntensityWarningPosition()
+    end)
+
+    -- Apply saved pos immediately if frame is already visible
+    EHT_RestoreIntensityWarningPosition()
+
+    frame.EHT_MoverInstalled = true
+end
+
+-- Delayed init with retry logic
+function EHTweaks_InitIntensityWarningTweaks(tries)
+    tries = tries or 0
+
+    if _G.IntensityWarningFrame then
+        EHT_SetupIntensityWarningMoveAndSave()
+        return
+    end
+
+    if tries >= 20 then return end
+    if CTimer and CTimer.After then
+        CTimer.After(0.5, function() EHTweaks_InitIntensityWarningTweaks(tries + 1) end)
+    end
+end
+
+
+
 -- =========================================================
 -- SECTION 3: HOOKS & WRAPPERS
 -- =========================================================
@@ -1011,6 +1282,10 @@ local function HookEchoButtons()
                         -- Refresh Draft UI if open
                         if EHTweaks_RefreshFavouredMarkers then 
                             EHTweaks_RefreshFavouredMarkers() 
+                        end
+				
+				if EHTweaks_RefreshBrowser then
+                            EHTweaks_RefreshBrowser()
                         end
                         
                         return -- Don't trigger chat link
@@ -1880,12 +2155,26 @@ end
 
 -- 4. GLOBAL REFRESH (Called by Browser)
 function EHTweaks_RefreshFavouredMarkers()
+    -- 1. Handle Original UI (ProjectEbonholdPerkFrame)
     if _G.ProjectEbonholdPerkFrame and _G.ProjectEbonholdPerkFrame:IsShown() then
         if EHTweaksDB.showDraftFavorites then
-            MarkFavouredEchoes()
+            MarkFavouredEchoes() -- Your existing function for old UI
+        end
+    end
+    
+    -- 2. Handle Modern Draft UI (MD.Show)
+    -- We need to check if MD is loaded and visible
+    if MD and MD.IsVisible and MD.IsVisible() then
+        -- Refresh the Modern UI visuals directly
+        -- We can just call the Refresh function we built into ModernDraft logic
+        -- asking it to re-evaluate the button text/stars without a full redraw if possible,
+        -- or just trigger a refresh.
+        if MD.Refresh then
+             MD.Refresh() 
         end
     end
 end
+
 
 -- 5. VISIBILITY BUTTON HOOKS (For Refresh)
 local function HookPerkVisibilityButtons()
@@ -1946,6 +2235,11 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                     end
                 end
                 if EHTweaksDB.enableChatLinks then HookEchoButtons() end
+		    
+		     if not _G.ProjectEbonholdEmpowermentFrame then return end
+        if not _G.ProjectEbonholdEmpowermentFrame.EHT_MoverInstalled then
+            EHT_SetupEmpowermentFrameMoveAndSave()
+        end
             end)
         end
 	  
@@ -1973,6 +2267,51 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                         
             end)
         end
+	  
+	  if CTimer and CTimer.After and ProjectEbonhold then
+	    CTimer.After(2, function()		
+		EHTweaks_InitIntensityWarningTweaks(0)
+	    end)
+	  end
+	  
+
+
+	  
+	  local function EHT_HookEmpowermentToggle()
+	    if _G.ToggleEmpowermentPanel and not _G.ToggleEmpowermentPanel_EHTHooked then
+		  local original = _G.ToggleEmpowermentPanel
+		  _G.ToggleEmpowermentPanel = function()
+			original()
+			
+			-- Refresh close button after toggle
+			CTimer.After(0.1, function()
+			    local frame = _G.ProjectEbonholdEmpowermentFrame
+			    if frame and frame.ehtCloseBtn then
+				  if frame:IsShown() then
+					frame.ehtCloseBtn:ClearAllPoints()
+					frame.ehtCloseBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+					frame.ehtCloseBtn:Show()
+					if frame.ehtCloseBtn.Raise then frame.ehtCloseBtn:Raise() end
+				  else
+					frame.ehtCloseBtn:Hide()
+				  end
+			    end
+			end)
+		  end
+		  _G.ToggleEmpowermentPanel_EHTHooked = true
+	    end
+	end
+
+	-- Call this after successful init:
+	if CTimer and CTimer.After and ProjectEbonhold then
+	    CTimer.After(2, function()
+		  EHTweaks_InitEmpowermentFrameTweaks(0)
+		  EHTweaks_InitIntensityWarningTweaks(0)
+		  
+		  -- Hook the toggle function after frames exist
+		  CTimer.After(1, EHT_HookEmpowermentToggle)
+	    end)
+	end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         if _G.skillTreeFrame and not _G.skillTreeFrame.EHTweaksHooked then
@@ -2422,3 +2761,14 @@ loader:RegisterEvent("PLAYER_ENTERING_WORLD")
 loader:SetScript("OnEvent", function() 
     InitMinimizer(0) 
 end)
+
+-- Global Keybind Handler for Draft Selection
+function EHTweaks_SelectDraftOption(index)
+    -- Only act if Modern Draft is visible
+    if EHTweaks.ModernDraft and EHTweaks.ModernDraft.IsVisible() then
+        EHTweaks.ModernDraft.SelectOption(index)
+    else
+        -- Optional: Pass through to standard UI if it happens to be open?
+        -- For now, restricted to Modern Draft to prevent accidents.
+    end
+end

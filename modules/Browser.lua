@@ -248,24 +248,17 @@ end
 
 local function BuildHistoryData()
     local data = {}
-    local groups = {} -- name -> { highestQ, qualities = {q -> id}, icon }
-
+    local groups = {} -- name => { highestQ, qualities = { q => id }, icon, name }
+    
     if EHTweaksDB and EHTweaksDB.seenEchoes then
         for spellId, info in pairs(EHTweaksDB.seenEchoes) do
             local name = info.name
             if name then
                 if not groups[name] then
-                    groups[name] = {
-                        highestQ = -1,
-                        qualities = {}, -- [quality] = spellId
-                        icon = info.icon,
-                        name = name
-                    }
+                    groups[name] = { highestQ = -1, qualities = {}, icon = info.icon, name = name }
                 end
                 
-                -- Ensure absolute value for quality to prevent -0 or negative numbers
                 local q = math.abs(tonumber(info.quality) or 0)
-                
                 groups[name].qualities[q] = spellId
                 
                 if q > groups[name].highestQ then
@@ -278,30 +271,40 @@ local function BuildHistoryData()
     
     for name, group in pairs(groups) do
         local mainID = group.qualities[group.highestQ]
+        
+        -- Check ALL IDs with this name, not just the highest quality (just to be sure)
         local fav = false
-        if EHTweaksDB.favorites and EHTweaksDB.favorites[mainID] then
-            fav = true
+        if EHTweaksDB.favorites then
+            -- Check if ANY ID with this name is favorited
+            for quality, spellId in pairs(group.qualities) do
+                if EHTweaksDB.favorites[spellId] then
+                    fav = true
+                    break
+                end
+            end
         end
-
+        
         table.insert(data, {
             isPerk = true,
             isHistory = true,
             name = name,
             icon = group.icon,
-            spellId = mainID, 
+            spellId = mainID,
             quality = group.highestQ,
-            qualityMap = group.qualities, 
+            qualityMap = group.qualities,
             isFavorite = fav
         })
     end
-
-    table.sort(data, function(a, b) 
+    
+    table.sort(data, function(a, b)
         if a.isFavorite ~= b.isFavorite then return a.isFavorite end
         if a.quality ~= b.quality then return a.quality > b.quality end
-        return a.name < b.name 
+        return a.name < b.name
     end)
+    
     return data
 end
+
 
 local function ApplyFilter()
     local text = (browserFrame and browserFrame.searchBox and browserFrame.searchBox:GetText()) or ""
@@ -318,13 +321,9 @@ local function ApplyFilter()
             -- Name match
             if string.find(string.lower(entry.name), text, 1, true) then
                 table.insert(filteredData, entry)
-            else
-                -- Description match (using existing GetRichDescription if available)
+            else               
                 local desc = nil
-                -- if GetRichDescription then 
-                    -- desc = GetRichDescription(entry) 
-                -- end
-                
+                               
                 if desc and string.find(string.lower(desc), text, 1, true) then
                     table.insert(filteredData, entry)
                 end
@@ -611,8 +610,6 @@ local function SetTab(id)
     UpdateScroll()
 end
 
--- --- UI: Browser Frame ---
--- --- UI: Browser Frame ---
 local function CreateBrowserFrame()
     if browserFrame then return browserFrame end
 
@@ -733,7 +730,6 @@ local function CreateBrowserFrame()
         prevTab = t
     end
 
-    -- CreateRows with Favorites, Tooltips, and Click Logic
      f.CreateRows = function(self)
         local h = self:GetHeight()
         local availableH = h - 90 
@@ -749,11 +745,10 @@ local function CreateBrowserFrame()
                 row:SetSize(424, ROW_HEIGHT)
                 row:RegisterForClicks("AnyUp") 
                 
-                -- Row Background (for highlighting favorites)
                 local bg = row:CreateTexture(nil, "BACKGROUND")
                 bg:SetAllPoints()
                 bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-                bg:SetVertexColor(0, 0, 0, 0) -- Invisible by default
+                bg:SetVertexColor(0, 0, 0, 0)
                 row.bg = bg
 
                 local hl = row:CreateTexture(nil, "HIGHLIGHT")
@@ -776,7 +771,6 @@ local function CreateBrowserFrame()
                 typeText:SetJustifyH("LEFT")
                 row.typeText = typeText
                 
-                -- Favorite Marker (Gem Icon)
                 local favMark = row:CreateTexture(nil, "OVERLAY")
                 favMark:SetSize(14, 14)                
                 favMark:SetPoint("RIGHT", -10, 0) 
@@ -784,7 +778,6 @@ local function CreateBrowserFrame()
                 favMark:Hide()
                 row.favMark = favMark
 
-                -- Cost/Pips anchored to the left of the Gem
                 local cost = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 cost:SetPoint("RIGHT", favMark, "LEFT", -5, 0)
                 row.cost = cost
@@ -837,7 +830,6 @@ local function CreateBrowserFrame()
                                 row:SetScript("OnClick", function(self, button)
                     if not self.data then return end
                     
-                    -- RIGHT CLICK: Toggle Favorite (Echoes DB)
                     if button == "RightButton" and self.data.isHistory then
                         if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
                         
@@ -845,9 +837,7 @@ local function CreateBrowserFrame()
                         local name = self.data.name
                         if not name then name = GetSpellInfo(id) end
                         
-                        -- Check if this specific ID is favored
                         if EHTweaksDB.favorites[id] then
-                            -- REMOVE: Clear ALL IDs that match this Name (Sync Fix)
                             if name then
                                 for k, v in pairs(EHTweaksDB.favorites) do
                                     local n = GetSpellInfo(k)
@@ -856,16 +846,13 @@ local function CreateBrowserFrame()
                                     end
                                 end
                             else
-                                -- Fallback: Just remove ID if name unavailable
                                 EHTweaksDB.favorites[id] = nil
                             end
                             print("|cffFFFF00EHTweaks|r: Removed '" .. (name or "Unknown") .. "' from Favorites.")
                         else
-                            -- ADD: Add this specific ID
                             EHTweaksDB.favorites[id] = true
                             print("|cff00FF00EHTweaks|r: Added '" .. (name or "Unknown") .. "' to Favorites!")
                             
-                            -- SYNC ADD: Add all known IDs for this name found in History
                             if name and EHTweaksDB.seenEchoes then
                                  for k, v in pairs(EHTweaksDB.seenEchoes) do
                                      if v.name == name then EHTweaksDB.favorites[k] = true end
@@ -873,23 +860,19 @@ local function CreateBrowserFrame()
                             end
                         end
                         
-                        -- Refresh Browser List
                         isDataDirty = true
                         UpdateScroll()
                         
-                        -- Refresh Draft UI (perkMainFrame) immediately
                         if EHTweaks_RefreshFavouredMarkers then 
                             EHTweaks_RefreshFavouredMarkers() 
                         end
                         return
                     end
                     
-                    -- LEFT CLICK or LINK Logic
                     if EHTweaks_HandleLinkClick and EHTweaks_HandleLinkClick(self.data.spellId) then return end
                     
                     if self.data.isPerk then return end
                     
-                    -- JUMP TO NODE (Skills Tab)
                     if _G.skillTreeFrame then _G.skillTreeFrame:Show() end
                     
                     local btn = _G["skillTreeNode" .. self.data.nodeId]
@@ -969,11 +952,10 @@ local function CreateBrowserFrame()
     local function AddCheck(varName, label, onClick)
         local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
         
-        -- Reduced Gap Logic (from 30px stride to approx 26px)
+        -- Reduced Gap Logic
         if lastObj == sTitle then
             cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -5)
         else
-            -- Checkboxes are roughly 30px high. Setting +6 offset from BOTTOMLEFT moves it UP, creating a tighter stack
             cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, 6)
         end
         
@@ -982,14 +964,11 @@ local function CreateBrowserFrame()
         text:SetText(label)
         
         cb:SetScript("OnClick", function(self)
-             -- 3.3.5 FIX: GetChecked returns 1 or nil. Force boolean true/false.
              local isChecked = (self:GetChecked() == 1)
              EHTweaksDB[varName] = isChecked
-             
              if onClick then onClick(self, isChecked) end
         end)
         
-        -- Load Initial State correctly using boolean comparison
         cb:SetChecked(EHTweaksDB[varName])
         
         lastObj = cb
@@ -1000,7 +979,6 @@ local function CreateBrowserFrame()
     AddCheck("enableChatLinks", "Enhance Project Ebonhold with Chat Links")
     AddCheck("enableTracker", "Enhance Project Ebonhold with Objective Tracker")
     
-    -- Special case for Minimap Button (custom behavior)
     AddCheck("minimapButtonHidden", "Hide Minimap Button", function(self, isChecked)
         if isChecked then
             if EHTweaks_HideMinimapButton then EHTweaks_HideMinimapButton() end
@@ -1017,22 +995,21 @@ local function CreateBrowserFrame()
 	end)
 
     AddCheck("enableIntensityWarning", "Warn on Intensity level change") 
-    
     AddCheck("enableShadowFissureWarning", "Warn when Shadow Fissure (red circle) is spawned")
-
-    -- NEW SETTINGS
     AddCheck("chatWarnings", "Show Chat Warnings")
     AddCheck("chatInfo", "Show Chat Info (Intensity/Stats)")
+    
+    -- NEW SETTING: Modern Draft
+    AddCheck("enableModernDraft", "Enable Modern Draft UI |r |cffff5555(Experimental!)")
 
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
-    -- Adjusted to match tighter layout
-    reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -20)
+    reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -9)
     reloadBtn:SetText("Apply and Reload UI")
     reloadBtn:SetScript("OnClick", ReloadUI)
 
     local warn = settings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    warn:SetPoint("TOPLEFT", reloadBtn, "BOTTOMLEFT", 0, -10)
+    warn:SetPoint("TOPLEFT", reloadBtn, "BOTTOMLEFT", 0, -9)
     warn:SetText("Note: Browser features (this window) will remain active regardless of these settings.")
     warn:SetTextColor(0.6, 0.6, 0.6)
 
@@ -1217,7 +1194,6 @@ function EHTweaks_RefreshBrowser()
         if UpdateScroll then UpdateScroll() end 
     end
 end
-
 
 SLASH_EHTBROWSER1 = "/eht"
 SlashCmdList["EHTBROWSER"] = function(msg)

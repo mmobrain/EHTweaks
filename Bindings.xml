@@ -4,5 +4,14 @@
     </Binding>    
     <Binding name="EHTWEAKS_TOGGLEECHOES" header="EHTWEAKS">
         EHTweaks_ToggleEchoes()
+    </Binding>    
+    <Binding name="EHTWEAKS_DRAFT_1" header="EHTWEAKS">
+        EHTweaks_SelectDraftOption(1)
     </Binding>
+    <Binding name="EHTWEAKS_DRAFT_2" header="EHTWEAKS">
+        EHTweaks_SelectDraftOption(2)
+    </Binding>
+    <Binding name="EHTWEAKS_DRAFT_3" header="EHTWEAKS">
+        EHTweaks_SelectDraftOption(3)
+    </Binding>   
 </Bindings>
