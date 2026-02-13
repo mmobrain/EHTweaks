@@ -47,11 +47,13 @@ local DEFAULTS = {
     perkButtonPos = nil,
     runFramePos = nil,
     offeredOptionalDB = nil,
-    minimapButtonAngle = 200, -- Default position in degrees
+    minimapButtonAngle = 200,
     minimapButtonHidden = false,
     enableLockedEchoWarning = true,
     enableIntensityWarning = true,
-    enableShadowFissureWarning = true
+    enableShadowFissureWarning = true,
+    chatWarnings = false,
+    chatInfo = false
 }
 
 -- --- State ---
@@ -142,6 +144,11 @@ local function TriggerIntensityAlert(level, isReached)
     else
         msg = "Intensity Level " .. level .. " Lost"
         r, g, b = 0.0, 0.6, 0.8 -- Blue/Teal
+    end
+    
+    -- Logic: Chat Info (New Setting)
+    if EHTweaksDB.chatInfo then
+        print("|cff00FF00[EHT Info]|r " .. msg)
     end
     
     -- Logic: Use Raid Warning ONLY for Level 2+ GAINS
@@ -269,8 +276,10 @@ local function TriggerHazardAlert(text)
     -- 2. Audible Alert
 	PlaySound("RaidWarning", "Master")    
     
-    -- 3. Chat Backup
-    print("|cffff0000[EHT WARNING]|r " .. text)
+    -- 3. Chat Backup (New Setting)
+    if EHTweaksDB.chatWarnings then
+        print("|cffff0000[EHT WARNING]|r " .. text)
+    end
 end
 
 local hazardFrame = CreateFrame("Frame")

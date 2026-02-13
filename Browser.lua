@@ -612,6 +612,7 @@ local function SetTab(id)
 end
 
 -- --- UI: Browser Frame ---
+-- --- UI: Browser Frame ---
 local function CreateBrowserFrame()
     if browserFrame then return browserFrame end
 
@@ -967,7 +968,14 @@ local function CreateBrowserFrame()
     local lastObj = sTitle
     local function AddCheck(varName, label, onClick)
         local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
-        cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -1)
+        
+        -- Reduced Gap Logic (from 30px stride to approx 26px)
+        if lastObj == sTitle then
+            cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -5)
+        else
+            -- Checkboxes are roughly 30px high. Setting +6 offset from BOTTOMLEFT moves it UP, creating a tighter stack
+            cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, 6)
+        end
         
         local text = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         text:SetPoint("LEFT", cb, "RIGHT", 5, 1)
@@ -1012,9 +1020,14 @@ local function CreateBrowserFrame()
     
     AddCheck("enableShadowFissureWarning", "Warn when Shadow Fissure (red circle) is spawned")
 
+    -- NEW SETTINGS
+    AddCheck("chatWarnings", "Show Chat Warnings")
+    AddCheck("chatInfo", "Show Chat Info (Intensity/Stats)")
+
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
-    reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -30)
+    -- Adjusted to match tighter layout
+    reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -20)
     reloadBtn:SetText("Apply and Reload UI")
     reloadBtn:SetScript("OnClick", ReloadUI)
 
