@@ -306,17 +306,21 @@ end)
 -- --- Global Loadout Utilities ---
 
 function EHTweaks_GetActiveLoadoutInfo()
-    local name = "Default"    
-    if activeLoadoutId and knownLoadouts then
-        for k, v in pairs(knownLoadouts) do
-            if v == activeLoadoutId then
-                name = k
-                break
-            end
+    local name = "Default"
+    local id = activeLoadoutId
+
+    if (not id or id == 0) and knownLoadouts then
+        local currentName = "Default"		
+        if knownLoadouts[currentName] then	  
+            id = knownLoadouts[currentName]
+            name = currentName            
+            activeLoadoutId = id		
         end
     end
-    return activeLoadoutId, name
+
+    return id, name
 end
+
 
 -- Global functions for Keybind
 function EHTweaks_ToggleSkillTree()
@@ -935,15 +939,17 @@ end
 
 local function EHT_InstallEmpowermentCloseButton(frame)
     if not frame then return end
-
-    -- Create ONCE as top-level (so it can sit above any addon art/frames)
+    
+    -- Create ONCE as top-level so it can sit above any addon artframes
     if not frame.ehtCloseBtn then
-        local close = CreateFrame("Button", "EHT_EmpowermentCloseBtn", UIParent, "UIPanelCloseButton")
+        local close = CreateFrame("Button", "EHTEmpowermentCloseBtn", UIParent, "UIPanelCloseButton")
         close:SetSize(32, 32)
         close:SetFrameStrata("TOOLTIP")
         close:SetFrameLevel(10000)
-        if close.SetToplevel then close:SetToplevel(true) end
-
+        if close.SetToplevel then
+            close:SetToplevel(true)
+        end
+        
         close:SetScript("OnClick", function()
             if _G.ToggleEmpowermentPanel then
                 _G.ToggleEmpowermentPanel()
@@ -951,43 +957,49 @@ local function EHT_InstallEmpowermentCloseButton(frame)
                 frame:Hide()
             end
         end)
-
+        
         close:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetText("Close Echoes")
             GameTooltip:Show()
         end)
+        
         close:SetScript("OnLeave", function()
             GameTooltip:Hide()
         end)
-
+        
         frame.ehtCloseBtn = close
-
+        
         -- Keep visibility synced with the Empowerment frame
         frame:HookScript("OnShow", function(self)
             if self.ehtCloseBtn then
                 self.ehtCloseBtn:ClearAllPoints()
                 self.ehtCloseBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -6)
                 self.ehtCloseBtn:Show()
-                if self.ehtCloseBtn.Raise then self.ehtCloseBtn:Raise() end
+                if self.ehtCloseBtn.Raise then
+                    self.ehtCloseBtn:Raise()
+                end
             end
         end)
-
+        
         frame:HookScript("OnHide", function(self)
-            if self.ehtCloseBtn then self.ehtCloseBtn:Hide() end
+            if self.ehtCloseBtn then
+                self.ehtCloseBtn:Hide()
+            end
         end)
-
-        print("|cff00FF00EHTweaks:|r Close button installed on Empowerment frame")
     end
-
-    -- Re-anchor every install call (covers move / reload / early creation)
+    
+    -- Always re-anchor when called (covers move, reload, early creation)
     frame.ehtCloseBtn:ClearAllPoints()
     frame.ehtCloseBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
-
-    -- If frame is already visible, show button immediately
+    
+    -- BUGFIX: Show button immediately if frame is already visible
+    -- This prevents the "double-click" issue on first use
     if frame:IsShown() then
         frame.ehtCloseBtn:Show()
-        if frame.ehtCloseBtn.Raise then frame.ehtCloseBtn:Raise() end
+        if frame.ehtCloseBtn.Raise then
+            frame.ehtCloseBtn:Raise()
+        end
     else
         frame.ehtCloseBtn:Hide()
     end
@@ -2221,6 +2233,9 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         
         C_Timer.After(2, CheckStarterDatabase)
+	  
+	
+	  	
         
         -- HOOKS
         if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateGrantedPerks then
@@ -2274,8 +2289,6 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
 	    end)
 	  end
 	  
-
-
 	  
 	  local function EHT_HookEmpowermentToggle()
 	    if _G.ToggleEmpowermentPanel and not _G.ToggleEmpowermentPanel_EHTHooked then
@@ -2348,6 +2361,40 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                  UpdateEHObjectiveDisplay(ProjectEbonhold.ObjectivesService.GetActiveObjective())
              end
         end)
+	  
+	
+	    -- --- SILENT SKILL TREE DATA REQUEST (PRELOAD CHARACTER ID) ---        
+        C_Timer.After(3, function()
+            -- 1. Check if we already have the ID (Success condition)
+            local id = EHTweaks_GetActiveLoadoutInfo()
+            if id and id ~= 0 then return end 
+
+            -- 2. Attempt: Use the addon's exposed function (Clean Method)
+            if ProjectEbonhold and ProjectEbonhold.RequestLoadoutFromServer then
+                 ProjectEbonhold.RequestLoadoutFromServer()
+                  --print("EHTweaks: RequestLoadoutFromServer called.") 
+            end
+
+            -- 3. Validation & Fallback: Wait 1 more second to see if it worked
+            C_Timer.After(1, function()
+                local checkId = EHTweaks_GetActiveLoadoutInfo()		    
+                if checkId and checkId ~= 0 then return end -- Success!
+			    -- FALLBACK: The "Blink" Method (Open & Close UI)
+			    -- This forces the addon to run its own OnShow logic which requests data
+			    if _G.skillTreeFrame and not _G.skillTreeFrame:IsShown() then
+				  
+				  _G.skillTreeFrame:Show()
+				  _G.skillTreeFrame:Hide()
+			    elseif _G.EHTweaks_ToggleSkillTree then
+				  -- Use our own toggle if frame ref is missing. Probably will not work if above fails because we call same code.			  
+				  _G.EHTweaksToggleSkillTree() -- Open
+				  _G.EHTweaksToggleSkillTree() -- Close
+			    end
+            end)
+        end)
+
+
+	    
 
     elseif event == "PLAYER_DEAD" then
         C_Timer.After(1, CheckLockedEchoes)
@@ -2762,13 +2809,3 @@ loader:SetScript("OnEvent", function()
     InitMinimizer(0) 
 end)
 
--- Global Keybind Handler for Draft Selection
-function EHTweaks_SelectDraftOption(index)
-    -- Only act if Modern Draft is visible
-    if EHTweaks.ModernDraft and EHTweaks.ModernDraft.IsVisible() then
-        EHTweaks.ModernDraft.SelectOption(index)
-    else
-        -- Optional: Pass through to standard UI if it happens to be open?
-        -- For now, restricted to Modern Draft to prevent accidents.
-    end
-end
