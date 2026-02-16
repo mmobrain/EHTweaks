@@ -939,71 +939,36 @@ end
 
 local function EHT_InstallEmpowermentCloseButton(frame)
     if not frame then return end
-    
-    -- Create ONCE as top-level so it can sit above any addon artframes
+
+    -- Create ONCE
     if not frame.ehtCloseBtn then
-        local close = CreateFrame("Button", "EHTEmpowermentCloseBtn", UIParent, "UIPanelCloseButton")
+        local close = CreateFrame("Button", "EHTEmpowermentCloseBtn", frame, "UIPanelCloseButton")
         close:SetSize(32, 32)
-        close:SetFrameStrata("TOOLTIP")
-        close:SetFrameLevel(10000)
-        if close.SetToplevel then
-            close:SetToplevel(true)
-        end
-        
+        close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+        close:SetFrameStrata("DIALOG")
+        close:SetFrameLevel(frame:GetFrameLevel() + 10)
+
         close:SetScript("OnClick", function()
-            if _G.ToggleEmpowermentPanel then
-                _G.ToggleEmpowermentPanel()
-            else
-                frame:Hide()
-            end
+            frame:Hide() 
         end)
-        
+
         close:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-            GameTooltip:SetText("Close Echoes")
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText("Close Echoes", 1, 1, 1)
             GameTooltip:Show()
         end)
-        
+
         close:SetScript("OnLeave", function()
             GameTooltip:Hide()
         end)
-        
+
         frame.ehtCloseBtn = close
-        
-        -- Keep visibility synced with the Empowerment frame
-        frame:HookScript("OnShow", function(self)
-            if self.ehtCloseBtn then
-                self.ehtCloseBtn:ClearAllPoints()
-                self.ehtCloseBtn:SetPoint("TOPRIGHT", self, "TOPRIGHT", -6, -6)
-                self.ehtCloseBtn:Show()
-                if self.ehtCloseBtn.Raise then
-                    self.ehtCloseBtn:Raise()
-                end
-            end
-        end)
-        
-        frame:HookScript("OnHide", function(self)
-            if self.ehtCloseBtn then
-                self.ehtCloseBtn:Hide()
-            end
-        end)
     end
-    
-    -- Always re-anchor when called (covers move, reload, early creation)
-    frame.ehtCloseBtn:ClearAllPoints()
-    frame.ehtCloseBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
-    
-    -- BUGFIX: Show button immediately if frame is already visible
-    -- This prevents the "double-click" issue on first use
-    if frame:IsShown() then
-        frame.ehtCloseBtn:Show()
-        if frame.ehtCloseBtn.Raise then
-            frame.ehtCloseBtn:Raise()
-        end
-    else
-        frame.ehtCloseBtn:Hide()
-    end
+
+
+    frame.ehtCloseBtn:Show()
 end
+
 
 local function EHT_SetupEmpowermentFrameMoveAndSave()
     local frame = _G.ProjectEbonholdEmpowermentFrame
@@ -1082,8 +1047,7 @@ function EHTweaks_HookEmpowermentToggle(tries)
         if not _G.ToggleEmpowermentPanel_EHTHooked then
             local orig = _G.ToggleEmpowermentPanel
             _G.ToggleEmpowermentPanel = function(...)
-                local r = orig(...)
-                -- After toggle, frame is guaranteed created if it was needed. [file:3]
+                local r = orig(...)                
                 EHT_After(0, function() EHTweaks_InitEmpowermentFrameTweaks(0) end)
                 return r
             end
