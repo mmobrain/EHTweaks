@@ -36,6 +36,7 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 *   **My Echoes Tab**: View all your collected Perks (Echoes) in one consolidated list.
 *   **Jump-to-Tree**: Clicking a skill in the browser automatically opens the Skill Tree, scrolls to that node, and highlights it with an orange pulsing glow.
 *   **Favored Echos**: Right-click (Echoes DB) or Shift+Right-click ("My Echoes", "Echo selection/draft UI") an Echo to mar it as **FAVOURED** it; favored Echoes are pinned to the top and marked with a diamond icon and "FAVOURED" label.
+*   **Delete Echo**: Alt+Left-click to delete Echo from Echoes DB.
 *   **Quick Access**: Open "My Echoes" by clicking the "E" button on the custom MiniRunBar.
 
 (alpha 0.0.3)

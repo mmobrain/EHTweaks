@@ -75,6 +75,96 @@ local filteredData = {}
 local browserFrame = nil
 local isDataDirty = true
 
+function EHTweaks_RefreshBrowser()
+    -- Mark data as dirty so it rebuilds the list (re-checking favorites)
+    isDataDirty = true
+    
+    -- If the browser frame is visible, refresh the scroll view immediately
+    if browserFrame and browserFrame:IsShown() then
+        -- This function (RefreshData/UpdateScroll) handles rebuilding if isDataDirty is true
+        if UpdateScroll then UpdateScroll() end 
+    end
+end
+
+-- --- ECHO DELETION LOGIC ---
+local RefreshData
+local function EHTweaks_DeleteEcho(spellId, deleteAll)
+    if not EHTweaksDB or not EHTweaksDB.seenEchoes or not spellId then return end
+    
+    local targetEntry = EHTweaksDB.seenEchoes[spellId]
+    if not targetEntry then return end
+
+    if deleteAll then
+        local name = targetEntry.name
+        local count = 0
+        for id, data in pairs(EHTweaksDB.seenEchoes) do
+            if data.name == name then
+                EHTweaksDB.seenEchoes[id] = nil
+                count = count + 1
+            end
+        end
+        print("|cffff0000EHTweaks:|r Deleted all " .. count .. " entries for '" .. name .. "'.")
+    else
+        EHTweaksDB.seenEchoes[spellId] = nil
+        print("|cffff0000EHTweaks:|r Deleted echo '" .. targetEntry.name .. "' (ID: " .. spellId .. ").")
+    end
+
+    
+    if RefreshData then
+        RefreshData()  -- Rebuild the list immediately
+    end
+    
+    -- Update UI
+    if browserFrame and browserFrame.UpdateLayout then
+        browserFrame:UpdateLayout() -- Ensure scroll/rows are redrawn
+    end
+end
+
+StaticPopupDialogs["EHTWEAKS_DELETE_ECHO"] = {
+    text = "Delete Echo from Database?\n\n|cffffd100%s|r",
+    button1 = "Delete This",
+    button2 = "Cancel",
+    OnAccept = function(self)
+        EHTweaks_DeleteEcho(self.data, false)
+    end,
+    OnAlt = function(self)
+        EHTweaks_DeleteEcho(self.data, true)
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
+local function EHTweaks_PromptDeleteEcho(spellId)
+    if not EHTweaksDB.seenEchoes[spellId] then return end
+    
+    local entry = EHTweaksDB.seenEchoes[spellId]
+    local name = entry.name
+    
+    -- Count duplicates
+    local count = 0
+    for _, data in pairs(EHTweaksDB.seenEchoes) do
+        if data.name == name then count = count + 1 end
+    end
+
+    local dialog = StaticPopupDialogs["EHTWEAKS_DELETE_ECHO"]
+    
+    if count > 1 then
+        dialog.button3 = "Delete All (" .. count .. ")"
+        dialog.OnAlt = function(self) EHTweaks_DeleteEcho(spellId, true) end
+    else
+        dialog.button3 = nil
+        dialog.OnAlt = nil
+    end
+
+    local popup = StaticPopup_Show("EHTWEAKS_DELETE_ECHO", name)
+    if popup then
+        popup.data = spellId
+    end
+end
+
+
 -- --- Helper: Text Merging ---
 local function GetRichDescription(data)
     if not data then return "" end
@@ -332,7 +422,7 @@ local function ApplyFilter()
     end
 end
 
-local function RefreshData()
+RefreshData = function()
     if activeTab == 1 then
         browserData = BuildTreeData() 
     elseif activeTab == 2 then
@@ -805,6 +895,7 @@ local function CreateBrowserFrame()
                                 end
                             end
                             GameTooltip:AddLine("Right-Click to Toggle Favorite", 1, 0.82, 0)
+				    GameTooltip:AddLine("|cffFF4444Alt+Left-Click to Delete|r", 0.7, 0.7, 0.7)
                         else
                             local c = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
                             GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
@@ -827,8 +918,15 @@ local function CreateBrowserFrame()
                 end)
                 row:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 
-                                row:SetScript("OnClick", function(self, button)
+		  row:SetScript("OnClick", function(self, button)
                     if not self.data then return end
+			  			    
+			if IsAltKeyDown() and button == "LeftButton" and self.data.isHistory then
+			    if self.data.spellId then
+				  EHTweaks_PromptDeleteEcho(self.data.spellId)
+			    end
+			    return
+			end
                     
                     if button == "RightButton" and self.data.isHistory then
                         if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
@@ -1184,16 +1282,6 @@ local function CreateBrowserFrame()
     return f
 end
 
-function EHTweaks_RefreshBrowser()
-    -- Mark data as dirty so it rebuilds the list (re-checking favorites)
-    isDataDirty = true
-    
-    -- If the browser frame is visible, refresh the scroll view immediately
-    if browserFrame and browserFrame:IsShown() then
-        -- This function (RefreshData/UpdateScroll) handles rebuilding if isDataDirty is true
-        if UpdateScroll then UpdateScroll() end 
-    end
-end
 
 SLASH_EHTBROWSER1 = "/eht"
 SlashCmdList["EHTBROWSER"] = function(msg)

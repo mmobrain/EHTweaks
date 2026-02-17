@@ -1,11 +1,11 @@
 ## Interface: 30300
-## Title: |ce5cc80ffEHTweaks|r |cffff5555[alpha.0.3.3]
+## Title: |ce5cc80ffEHTweaks|r |cffff5555[beta.0.3.4]
 ## Notes: Enhancements for Project Ebonhold (Filter, Search, Visuals, Compendium, Movable UI Elements, Import/Export, Echoes Database, Loadout Manager with Quick Loadout Switching, Player Run Frame compact feature)
 ## Dependencies: ProjectEbonhold
 ## SavedVariables: EHTweaksDB
 ## Author: Skulltrail
 ## Contributors: Xurkon, MedianAura
-## Version: alpha 0.3.3
+## Version: alpha 0.3.4
 
 libs\LibStub\LibStub.lua
 libs\LibDeflate\lib.xml
