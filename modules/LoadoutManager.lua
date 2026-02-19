@@ -59,7 +59,7 @@ if not Skin.ApplyInset then
     end
 end
 
--- Safer initialization for cross-file communication
+
 _G.EHTweaks = _G.EHTweaks or addon
 EHTweaks.Loadout = EHTweaks.Loadout or {
     managerFrame = nil,

@@ -1,19 +1,19 @@
 -- Author: Skulltrail
 -- EHTweaks: Modern Draft UI
--- Features: Vertical List Layout, Saved Positions, Stat Summary Parser, Synced Favorites, Right-Click "FAV" Support.
+-- Features: Vertical List Layout, Saved Positions, Stat Summary Parser, Synced Favorites, Right-Click "FAV" Support, Modern Draft UI.
 
 local addonName, addon = ...
 _G.EHTweaks = _G.EHTweaks or addon
 EHTweaks.ModernDraft = {}
 local MD = EHTweaks.ModernDraft
 
--- --- Configuration ---
 local CARD_WIDTH = 340
 local CARD_MIN_HEIGHT = 70
 local CARD_SPACING = 8
 local STAT_PANEL_WIDTH = 180
+local descScale = 1.15
 
-local QUALITY_INFO = {
+local QUALITYINFO = {
     [0] = { r=1.0, g=1.0, b=1.0, border="perk_border_quality_0", bg="perk_quality_0" },
     [1] = { r=0.1, g=1.0, b=0.1, border="perk_border_quality_1", bg="perk_quality_1" },
     [2] = { r=0.0, g=0.4, b=1.0, border="perk_border_quality_2", bg="perk_quality_2" },
@@ -33,7 +33,6 @@ local STAT_MAP = {
     ["flat"] = "Bonus",
 }
 
--- --- State ---
 local mainFrame = nil
 local restoreBtn = nil
 local cardPool = {}
@@ -41,17 +40,15 @@ local currentChoices = {}
 local isSelecting = false
 local currentOwnedStats = {}
 
--- Reroll priming
 local rerollPollSeq = 0
 local lastChoiceRequestAt = 0
 
--- --- Helper: Tooltip Scanner & Description ---
 local scanner = _G["EHT_DraftScanner"] or CreateFrame("GameTooltip", "EHT_DraftScanner", nil, "GameTooltipTemplate")
 scanner:SetOwner(WorldFrame, "ANCHOR_NONE")
 
 local function GetCardDescription(spellId, stack)
-    -- 1. Try ebonholdproject's utils first
-    -- Using 500 char limit as requested to prevent early truncation
+    
+    
     if utils and utils.GetSpellDescription then
         local desc = utils.GetSpellDescription(spellId, 500, stack or 1)
         if desc and desc ~= "" and desc ~= "Click for details" then 
@@ -59,20 +56,20 @@ local function GetCardDescription(spellId, stack)
         end
     end
 
-    -- 2. Fallback: Standard Tooltip Scan (if utils fails for any reason)
+    
     scanner:ClearLines()
     scanner:SetHyperlink("spell:" .. spellId)
     local lines = scanner:NumLines()
     if lines < 1 then return "" end
     
     local desc = ""
-    -- For spells, description usually starts at line 2
+    
     for i = 2, lines do
         local lineObj = _G["EHT_DraftScannerTextLeft" .. i]
         if lineObj then
             local text = lineObj:GetText()
             if text then
-                 -- Filter out "Rank" or "Next Rank" lines
+                 
                  if not text:find("^Rank %d") and not text:find("^Next Rank:") then
                      if desc ~= "" then desc = desc .. "\n" end
                      desc = desc .. text
@@ -83,7 +80,346 @@ local function GetCardDescription(spellId, stack)
     return desc
 end
 
--- --- Helper: Stat Parser ---
+local function GetBanishInfo()
+    if not ProjectEbonhold.Constants
+    or not ProjectEbonhold.Constants.ENABLE_BANISH_SYSTEM then
+        return 0
+    end
+    local runData = ProjectEbonhold.PlayerRunService
+        and ProjectEbonhold.PlayerRunService.GetCurrentData() or {}
+    local remaining = runData.remainingBanishes or 0
+    if remaining == 0 then
+        local g = _G["EbonholdPlayerRunData"] or {}
+        if g.remainingBanishes and g.remainingBanishes > 0 then
+            remaining = g.remainingBanishes
+        end
+    end
+    return remaining
+end
+
+local function UpdateBanishButtons()
+    if not mainFrame or not mainFrame:IsShown() then return end
+    local remaining = GetBanishInfo()
+    for _, card in ipairs(cardPool) do
+        if card and card:IsShown() and card.banBtn then
+            if remaining > 0 then
+                card.banBtn:SetText("Ban (" .. remaining .. ")")
+                card.banBtn:Enable()
+                card.banBtn:EnableMouse(true)
+            else
+                card.banBtn:SetText("Ban")
+                card.banBtn:Disable()
+                card.banBtn:EnableMouse(false)
+            end
+        end
+    end
+end
+
+function MD.BanishOption(index)
+    if isSelecting then return end
+    if not currentChoices or not currentChoices[index] then return end
+    local remaining = GetBanishInfo()
+    if remaining <= 0 then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffff0000No banishes remaining.|r")
+        return
+    end
+    isSelecting = true
+    
+    for _, card in ipairs(cardPool) do
+        if card and card:IsShown() then
+            card.btn:EnableMouse(false)
+            if card.banBtn then card.banBtn:EnableMouse(false) end
+        end
+    end
+    
+    local success = ProjectEbonhold.PerkService.BanishPerk(index - 1)
+    if not success then
+        isSelecting = false
+        for _, card in ipairs(cardPool) do
+            if card and card:IsShown() then
+                card.btn:EnableMouse(true)
+                if card.banBtn then card.banBtn:EnableMouse(true) end
+            end
+        end
+    end
+end
+
+local function CalculateCardHeight(descText, descFontString, cardIndex, spellId)
+    local minH = CARDMINHEIGHT or CARD_MIN_HEIGHT or 70
+
+    if not descText or descText == "" then
+        if EHTweaksDB and EHTweaksDB.debugModernDraftHeight then
+            print("EHTweaks:MD:CalcHeight:card:" .. (cardIndex or 0) .. ":spell:" .. (spellId or 0) .. ":empty:1:minH:" .. minH)
+        end
+        return minH
+    end
+
+    
+    if not _G.EHT_MeasureFont then
+        local f = CreateFrame("Frame", nil, UIParent)
+        f:Hide()
+        _G.EHT_MeasureFont = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        _G.EHT_MeasureFont:SetJustifyH("LEFT")
+        _G.EHT_MeasureFont:SetJustifyV("TOP")
+        _G.EHT_MeasureFont:SetWordWrap(true)
+    end
+
+    local measure = _G.EHT_MeasureFont
+
+    
+    local width = 270
+    local fontPath, fontSize, fontFlags
+
+    if descFontString then
+        local w = descFontString:GetWidth()
+        if w and w > 1 then
+            width = w
+        end
+
+        fontPath, fontSize, fontFlags = descFontString:GetFont()
+    end
+
+    if fontPath and fontSize then
+        measure:SetFont(fontPath, fontSize, fontFlags)
+    else
+        
+        measure:SetFontObject("GameFontHighlight")
+        local p, s, fl = measure:GetFont()
+        fontPath, fontSize, fontFlags = p, s, fl
+    end
+
+    measure:SetWidth(width)
+    measure:SetText(descText)
+
+    local textHeight = measure:GetStringHeight() or 0
+
+    
+    local topArea = 38
+    local bottomPad = 12
+    local neededHeight = topArea + textHeight*descScale + bottomPad
+    local finalHeight = math.max(minH, math.ceil(neededHeight))
+
+    if EHTweaksDB and EHTweaksDB.debugModernDraftHeight then
+        print(
+            "EHTweaks:MD:CalcHeight"
+            .. ":card:" .. (cardIndex or 0)
+            .. ":spell:" .. (spellId or 0)
+            .. ":w:" .. (math.floor(width) or 0)
+            .. ":font:" .. (math.floor(fontSize or 0) or 0)
+            .. ":textH:" .. (math.floor(textHeight) or 0)
+            .. ":need:" .. (math.floor(neededHeight) or 0)
+            .. ":final:" .. (finalHeight or 0)
+        )
+    end
+
+    return finalHeight+22
+end
+
+local function RecalculateLayout()
+    local cardSpacing = CARDSPACING or CARD_SPACING or 8
+    local cardWidth   = CARDWIDTH   or CARD_WIDTH   or 340
+
+    if not mainFrame or not mainFrame:IsShown() then return end
+    if not mainFrame.cardContainer then return end
+
+    
+    local visibleCards = {}
+    for i = 1, #cardPool do
+        local card = cardPool[i]
+        if card and card:IsShown() then
+            table.insert(visibleCards, { card = card, poolIndex = i })
+        end
+    end
+
+    if #visibleCards == 0 then return end
+
+    local cardHeights = {}
+    local totalHeight = 0
+
+    for idx, entry in ipairs(visibleCards) do
+        local card = entry.card
+        local descText = card.desc and card.desc:GetText() or ""
+        local spellId = card.data and card.data.spellId or 0
+
+        local h = CalculateCardHeight(descText, card.desc, entry.poolIndex, spellId)
+
+        cardHeights[idx] = h
+        totalHeight = totalHeight + h
+
+        if EHTweaksDB and EHTweaksDB.debugModernDraftHeight and card.desc then
+            local liveH = card.desc:GetStringHeight() or 0
+            print(
+                "EHTweaks:MD:Reflow"
+                .. ":card:" .. (entry.poolIndex or 0)
+                .. ":spell:" .. (spellId or 0)
+                .. ":liveTextH:" .. (math.floor(liveH) or 0)
+                .. ":cardH:" .. (h or 0)
+            )
+        end
+    end
+
+    totalHeight = totalHeight + cardSpacing * math.max(0, #visibleCards - 1)
+
+    local currentY = 0
+    for idx, entry in ipairs(visibleCards) do
+        local card = entry.card
+        local h = cardHeights[idx]
+
+        card:SetSize(cardWidth, h)
+        card:ClearAllPoints()
+        card:SetPoint("TOPLEFT", mainFrame.cardContainer, "TOPLEFT", 0, -currentY)
+
+        currentY = currentY + h + cardSpacing
+    end
+
+    mainFrame.cardContainer:SetHeight(totalHeight)
+    if mainFrame.statPanel then
+        mainFrame.statPanel:SetHeight(totalHeight)
+    end
+    mainFrame:SetHeight(math.max(totalHeight + 90, 200))
+
+    if EHTweaksDB and EHTweaksDB.debugModernDraftHeight then
+        print("EHTweaks:MD:Reflow:total:" .. (math.floor(totalHeight) or 0))
+    end
+end
+
+local function GetRerollInfo()
+    
+    if ProjectEbonhold and ProjectEbonhold.PerkUI then
+        local perkUI = ProjectEbonhold.PerkUI
+        if perkUI.totalRerolls ~= nil and perkUI.usedRerolls ~= nil then
+            local total = tonumber(perkUI.totalRerolls) or 0
+            local used = tonumber(perkUI.usedRerolls) or 0
+            return math.max(0, total - used), total
+        end
+    end
+    
+    
+    local runData = _G.EbonholdPlayerRunData
+    if runData then
+        local used = tonumber(runData.usedRerolls) or 0
+        local total = tonumber(runData.totalRerolls) or 0
+        return math.max(0, total - used), total
+    end
+    
+    
+    if ProjectEbonhold and ProjectEbonhold.PlayerRunService and ProjectEbonhold.PlayerRunService.GetCurrentData then
+        runData = ProjectEbonhold.PlayerRunService.GetCurrentData()
+        if runData then
+            local used = tonumber(runData.usedRerolls) or 0
+            local total = tonumber(runData.totalRerolls) or 0
+            return math.max(0, total - used), total
+        end
+    end
+    
+    return 0, 0
+end
+
+local function UpdateRerollButton()
+    if not mainFrame or not mainFrame.rerollBtn then return end
+    local avail, total = GetRerollInfo()
+    mainFrame.rerollBtn:SetText("Reroll (" .. avail .. "/" .. total .. ")")
+    if avail <= 0 then mainFrame.rerollBtn:Disable() else mainFrame.rerollBtn:Enable() end
+end
+
+function MD.UpdateInPlace(choices)
+    if not mainFrame or not mainFrame:IsShown() then
+        MD.Show(choices)
+        return
+    end
+
+    if not choices or #choices == 0 then
+        return
+    end
+
+    currentChoices = choices
+    isSelecting = false
+
+    local qi = QUALITYINFO
+    local thinBackdrop = BACKDROPTHIN or BACKDROP_THIN
+
+    for i, data in ipairs(choices) do
+        local card = cardPool[i]
+        if not card or not card:IsShown() then break end
+
+        local oldData = card.data
+        local newStack = data.stack or 1
+        local oldStack = oldData and (oldData.stack or 1) or nil
+
+        local needsTextUpdate =
+            (not oldData) or
+            (oldData.spellId ~= data.spellId) or
+            (oldStack ~= newStack)
+
+        local needsQualityUpdate =
+            (not oldData) or
+            (oldData.quality ~= data.quality)
+
+        local name, _, icon = nil, nil, nil
+        if needsTextUpdate or needsQualityUpdate then
+            name, _, icon = GetSpellInfo(data.spellId)
+        end
+
+        local qInfo = nil
+        if qi then
+            qInfo = qi[data.quality] or qi[0]
+        end
+        if not qInfo then
+            qInfo = { r = 1, g = 1, b = 1 }
+        end
+
+        
+        card.qInfo = qInfo
+        card.data = data
+        card.data.name = name or (oldData and oldData.name) or nil
+        card.cardIndex = i
+
+        if needsTextUpdate then
+            card.name:SetText(name or "Unknown Echo")
+            card.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+            card.desc:SetText(GetCardDescription(data.spellId, newStack))
+        end
+
+        if needsQualityUpdate or needsTextUpdate then
+            card.name:SetTextColor(qInfo.r or 1, qInfo.g or 1, qInfo.b or 1)
+        end
+
+        
+        if thinBackdrop then
+            card:SetBackdrop(thinBackdrop)
+        end
+        card:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+        card:SetBackdropBorderColor(qInfo.r or 1, qInfo.g or 1, qInfo.b or 1, 1)
+
+        
+        local capturedIndex = i
+        card.btn:SetScript("OnClick", function()
+            MD.SelectOption(capturedIndex)
+        end)
+
+        if card.banBtn then
+            card.banBtn:SetScript("OnClick", function()
+                MD.BanishOption(capturedIndex)
+            end)
+        end
+    end
+
+    
+    RecalculateLayout()
+
+    for _, card in ipairs(cardPool) do
+        if card and card:IsShown() then
+            card.btn:EnableMouse(true)
+            if card.banBtn then
+                card.banBtn:EnableMouse(true)
+            end
+        end
+    end
+
+    UpdateBanishButtons()
+    UpdateRerollButton()
+end
+
 local function GetSpellStats(spellId, stacks)
     stacks = stacks or 1
     local results = {}
@@ -125,7 +461,6 @@ local function CalculateAllOwnedStats()
     return total
 end
 
--- --- Helper: UI Update Stat Panel ---
 local function UpdateStatSummary(hoverStats)
     if not mainFrame or not mainFrame.statPanel then return end
     local panel = mainFrame.statPanel
@@ -175,7 +510,6 @@ local function UpdateStatSummary(hoverStats)
     end
 end
 
--- --- Helper: Favorite Sync Logic ---
 local function SyncFavorite(spellId, name, shouldAdd)
     if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
     
@@ -204,25 +538,25 @@ local function SyncFavorite(spellId, name, shouldAdd)
         print("|cffFFFF00EHTweaks|r: Removed '" .. (targetName or "Unknown") .. "' from Favorites.")
     end
     
-    -- INSTANT UI UPDATE: Loop through visible cards and update them
+    
 	
-	-- 1. Refresh Original UI Markers (if active)
+	
     if EHTweaks_RefreshFavouredMarkers then 
         EHTweaks_RefreshFavouredMarkers() 
     end
     
-    -- 2. Refresh Modern UI (Instant Update)
+    
     if cardPool then
         for _, card in ipairs(cardPool) do
             if card:IsShown() and card.data then
                 local isFav = EHTweaksDB.favorites and EHTweaksDB.favorites[card.data.spellId]
                 
-                -- Update Star
+                
                 if card.star then
                      card.star:SetAlpha(isFav and 1 or 0.2)
                 end
                 
-                -- Update Button Text
+                
                 if card.btn then
                      card.btn:SetText(isFav and "Select (F)" or "Select")
                 end
@@ -230,14 +564,12 @@ local function SyncFavorite(spellId, name, shouldAdd)
         end
     end
     
-    -- 3. Broadcast to Browser
+    
     if EHTweaks_RefreshBrowser then EHTweaks_RefreshBrowser() end
-    -- MD.Refresh() DISABLED here anymore to avoid full redraw flickering, 
-    -- since we manually updated the active cards above...
+    
+    
 end
 
-
--- --- Helper: Count Owned Echoes ---
 local function GetOwnedCount(spellName)
     local count = 0
     if ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.GetGrantedPerks then
@@ -251,40 +583,6 @@ local function GetOwnedCount(spellName)
     return count
 end
 
--- --- Helper: Reroll Info ---
-local function GetRerollInfo()
-    -- Strategy 1: PerkUI state
-    if ProjectEbonhold and ProjectEbonhold.PerkUI then
-        local perkUI = ProjectEbonhold.PerkUI
-        if perkUI.totalRerolls ~= nil and perkUI.usedRerolls ~= nil then
-            local total = tonumber(perkUI.totalRerolls) or 0
-            local used = tonumber(perkUI.usedRerolls) or 0
-            return math.max(0, total - used), total
-        end
-    end
-    
-    -- Strategy 2: Global run data
-    local runData = _G.EbonholdPlayerRunData
-    if runData then
-        local used = tonumber(runData.usedRerolls) or 0
-        local total = tonumber(runData.totalRerolls) or 0
-        return math.max(0, total - used), total
-    end
-    
-    -- Strategy 3: Service getter
-    if ProjectEbonhold and ProjectEbonhold.PlayerRunService and ProjectEbonhold.PlayerRunService.GetCurrentData then
-        runData = ProjectEbonhold.PlayerRunService.GetCurrentData()
-        if runData then
-            local used = tonumber(runData.usedRerolls) or 0
-            local total = tonumber(runData.totalRerolls) or 0
-            return math.max(0, total - used), total
-        end
-    end
-    
-    return 0, 0
-end
-
--- --- Reroll Priming & Polling ---
 local function PrimeRerollDataIfNeeded()
     local avail, total = GetRerollInfo()
     if total and total > 0 then return end
@@ -312,13 +610,6 @@ local function After(delay, fn)
     end
 end
 
-local function UpdateRerollButton()
-    if not mainFrame or not mainFrame.rerollBtn then return end
-    local avail, total = GetRerollInfo()
-    mainFrame.rerollBtn:SetText("Reroll (" .. avail .. "/" .. total .. ")")
-    if avail <= 0 then mainFrame.rerollBtn:Disable() else mainFrame.rerollBtn:Enable() end
-end
-
 local function StartRerollPolling()
     rerollPollSeq = rerollPollSeq + 1
     local mySeq = rerollPollSeq
@@ -337,45 +628,6 @@ local function StartRerollPolling()
     step(12)
 end
 
--- --- Helper: Dynamic Height Calculator ---
-local function CalculateCardHeight(descText)
-    if not descText or descText == "" then
-        return CARD_MIN_HEIGHT
-    end
-    
-    -- CONFIG: Scale Factor (1.15 = 15% larger than standard)
-    local descScale = 1.15
-    
-    -- Create the measuring fontstring if it doesn't exist yet
-    if not _G.EHT_MeasureFont then
-        local f = CreateFrame("Frame", nil, UIParent)
-        f:Hide()
-        _G.EHT_MeasureFont = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        _G.EHT_MeasureFont:SetJustifyH("LEFT")
-        _G.EHT_MeasureFont:SetJustifyV("TOP")
-    end
-    
-    -- 1. Reset to base object to get the correct font face/style
-    _G.EHT_MeasureFont:SetFontObject("GameFontHighlight") 
-    
-    -- 2. Get current settings and apply SCALING
-    local fontPath, fontSize, fontFlags = _G.EHT_MeasureFont:GetFont()
-    _G.EHT_MeasureFont:SetFont(fontPath, fontSize * descScale, fontFlags)
-    
-    -- 3. Set Width and Wrap
-    _G.EHT_MeasureFont:SetWidth(270)
-    _G.EHT_MeasureFont:SetWordWrap(true)
-    
-    _G.EHT_MeasureFont:SetText(descText)
-    local textHeight = _G.EHT_MeasureFont:GetStringHeight()
-    
-    -- Height: Top Area(38) + TextHeight + Bottom Padding(12)
-    local neededHeight = 38 + textHeight + 12
-    
-    return math.max(CARD_MIN_HEIGHT, math.ceil(neededHeight))
-end
-
--- --- Backdrop Definitions ---
 local BACKDROP_THIN = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -386,21 +638,20 @@ local BACKDROP_THIN = {
 local BACKDROP_THICK = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 2, -- Thicker border on hover
+    edgeSize = 2, 
     insets = {left = 0, right = 0, top = 0, bottom = 0}
 }
 
--- --- Frame Factory: Card ---
 local function CreateCard(parent)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(CARD_WIDTH, CARD_MIN_HEIGHT)
     
-    -- Initial Backdrop (Thin)
+    
     f:SetBackdrop(BACKDROP_THIN)
     f:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
     f:SetBackdropBorderColor(0, 0, 0, 1) 
     
-    -- 1. Icon
+    
     local iconSize = CARD_MIN_HEIGHT - 10 
     local iconBg = f:CreateTexture(nil, "BACKGROUND", nil, 1)
     iconBg:SetSize(iconSize, iconSize)
@@ -414,26 +665,38 @@ local function CreateCard(parent)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     f.icon = icon
     
-    -- 2. Select Button
+    
     local btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     btn:SetSize(70, 30)
-    btn:SetPoint("TOPRIGHT", -5, -5)
+    btn:SetPoint("TOPRIGHT", -2, -2)
     btn:SetText("Select")
     btn:SetFrameLevel(240)
     f.btn = btn
     
-    -- 3. Name
+    
+    local banBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+	banBtn:SetSize(60, 20)
+	banBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
+	banBtn:SetText("Ban")
+	banBtn:SetFrameLevel(240)
+	banBtn:Disable()
+	if banBtn:GetFontString() then
+	    banBtn:GetFontString():SetTextColor(0.97, 0.77, 1)
+	end
+	f.banBtn = banBtn
+
+    
     local name = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     name:SetPoint("TOPLEFT", iconBg, "TOPRIGHT", 10, -2)
     name:SetPoint("RIGHT", btn, "LEFT", -5, 0)
     name:SetJustifyH("LEFT")
     f.name = name
     
-    -- 4. Description (Scaled)
+    
     local desc = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     
-    -- Apply Scale
-    local descScale = 1.15
+    
+    
     local fontPath, fontSize, fontFlags = desc:GetFont()
     desc:SetFont(fontPath, fontSize * descScale, fontFlags)
     
@@ -465,14 +728,14 @@ local function CreateCard(parent)
     kbText:SetPoint("CENTER", btn, "TOP", 0, 4)
     f.kbText = kbText
     
-    -- Hover Area
+    
     local hover = CreateFrame("Button", nil, f)
     hover:SetAllPoints(f)
     hover:SetFrameLevel(230)
-    hover:RegisterForClicks("RightButtonUp")
+    hover:RegisterForClicks("RightButtonUp", "LeftButtonUp")
     f.hover = hover
     
-    -- --- HOVER SCRIPTS ---
+    
     hover:SetScript("OnEnter", function(self)
         f:SetBackdrop(BACKDROP_THICK)
         f:SetBackdropColor(0.1, 0.1, 0.1, 0.9) 
@@ -489,8 +752,12 @@ local function CreateCard(parent)
              local b = f.qInfo and f.qInfo.b or 1
              GameTooltip:SetText(f.data.name, r, g, b)
              GameTooltip:AddLine(utils.GetSpellDescription(f.data.spellId, 999, f.data.stack or 1), 1, 1, 1, true)
+		   if GetBanishInfo() > 0 then
+		    GameTooltip:AddLine("Ctrl+Shift+Left-Click to Banish", 1, 0.45, 0.45)
+		end
              GameTooltip:Show()
         end
+	
     end)
     
     hover:SetScript("OnLeave", function(self)
@@ -508,14 +775,18 @@ local function CreateCard(parent)
     hover:SetScript("OnClick", function(self, btn)
         if btn == "RightButton" and f.data then
             local currentIsFav = EHTweaksDB.favorites and EHTweaksDB.favorites[f.data.spellId]
-            -- Pass the frame 'f' to SyncFavorite so it can update the text immediately
+            
             SyncFavorite(f.data.spellId, f.data.name, not currentIsFav, f)
         end
+	   if btn == "LeftButton" and IsControlKeyDown() and IsShiftKeyDown() and not IsAltKeyDown() then
+		  if f.cardIndex then
+			MD.BanishOption(f.cardIndex)
+		  end
+	   end
     end)
     
     return f
 end
-
 
 local function GetCard(index)
     if not cardPool[index] then
@@ -524,7 +795,6 @@ local function GetCard(index)
     return cardPool[index]
 end
 
--- --- Logic: Selection ---
 function MD.SelectOption(index)
     if isSelecting or not currentChoices or not currentChoices[index] then return end
     
@@ -539,7 +809,6 @@ function MD.SelectOption(index)
     end
 end
 
--- --- UI: Restore Button ---
 local function CreateRestoreButton()
     if restoreBtn then return restoreBtn end
     
@@ -592,7 +861,6 @@ local function CreateRestoreButton()
     return b
 end
 
--- --- UI: Main Frame ---
 local function CreateDraftFrame()
     if mainFrame then return mainFrame end
     
@@ -636,7 +904,7 @@ local function CreateDraftFrame()
     container:SetFrameLevel(210)
     f.cardContainer = container
     
-    -- Stat Panel
+    
     local statPanel = CreateFrame("Frame", nil, f)
     statPanel:SetSize(STAT_PANEL_WIDTH, 10)
     statPanel:SetPoint("TOPLEFT", container, "TOPRIGHT", 10, 0)
@@ -653,23 +921,48 @@ local function CreateDraftFrame()
     statPanel.empty = empty
     f.statPanel = statPanel
 
-    local rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    rerollBtn:SetSize(160, 30)
-    rerollBtn:SetPoint("BOTTOMLEFT", 15, 12)
-    rerollBtn:SetFrameLevel(260)
-    rerollBtn:SetScript("OnClick", function()
-        StaticPopupDialogs["PERK_REROLL_CONFIRM"] = {
-            text = "Are you sure you want to reroll these Echoes?", button1 = "Yes", button2 = "No",
-            OnAccept = function() 
-                if ProjectEbonhold and ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.RequestReroll then
-                    ProjectEbonhold.PerkService.RequestReroll() 
-                end
-            end,
-            timeout = 0, whileDead = true, hideOnEscape = true
-        }
-        StaticPopup_Show("PERK_REROLL_CONFIRM")
-    end)
-    f.rerollBtn = rerollBtn
+	local rerollBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+	rerollBtn:SetSize(160, 30)
+	rerollBtn:SetPoint("BOTTOMLEFT", 15, 12)
+	rerollBtn:SetFrameLevel(260)
+	rerollBtn:SetScript("OnClick", function()
+		
+		if IsControlKeyDown() and IsShiftKeyDown() then
+			if ProjectEbonhold and ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.RequestReroll then
+				ProjectEbonhold.PerkService.RequestReroll()
+				StartRerollPolling()
+			end
+			return
+		end
+
+		
+		StaticPopupDialogs["PERK_REROLL_CONFIRM"] = {
+			text = "Are you sure you want to reroll these Echoes?",
+			button1 = "Yes",
+			button2 = "No",
+			OnAccept = function()
+				if ProjectEbonhold and ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.RequestReroll then
+					ProjectEbonhold.PerkService.RequestReroll()
+					StartRerollPolling()
+				end
+			end,
+			timeout = 0,
+			whileDead = true,
+			hideOnEscape = true,
+		}
+		StaticPopup_Show("PERK_REROLL_CONFIRM")
+	end)
+	rerollBtn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Reroll Echoes", 1, 1, 1)
+		GameTooltip:AddLine("Click to reroll with confirmation.", 0.8, 0.8, 0.8, true)
+		GameTooltip:AddLine("|cff00ff00Ctrl+Shift+Click|r to reroll instantly without confirmation.", 0.8, 0.8, 0.8, true)
+		GameTooltip:Show()
+	end)
+	rerollBtn:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	f.rerollBtn = rerollBtn
 
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", function(self)
@@ -685,37 +978,31 @@ local function CreateDraftFrame()
     return f
 end
 
--- --- Pending stock-button flow ---
 MD.pendingChoices = nil
-MD._chooseBtnHooked = false
-MD._origChooseOnClick = nil
+MD.chooseBtnHooked = false
+MD.origChooseOnClick = nil
+MD.isInDraftSession = false
 
 local function HookChooseButton()
     local btn = _G.PerkChooseButton
-    if not btn or MD._chooseBtnHooked then return btn ~= nil end
-
-    MD._origChooseOnClick = btn:GetScript("OnClick")
-
+    if not btn or MD.chooseBtnHooked then return btn ~= nil end
+    MD.origChooseOnClick = btn:GetScript("OnClick")
     btn:SetScript("OnClick", function(self, ...)
-        -- If ModernDraft is enabled and we have a pending choice, open MD instead
+        
         if EHTweaksDB and EHTweaksDB.enableModernDraft and MD.pendingChoices and #MD.pendingChoices > 0 then
             if _G.ProjectEbonholdPerkFrame then _G.ProjectEbonholdPerkFrame:Hide() end
+            
+            MD.isInDraftSession = true
             MD.Show(MD.pendingChoices)
             return
         end
-
-        -- Fallback: run original behavior
-        if MD._origChooseOnClick then
-            return MD._origChooseOnClick(self, ...)
-        end
+        
+        if MD.origChooseOnClick then return MD.origChooseOnClick(self, ...) end
     end)
-
-    MD._chooseBtnHooked = true
+    MD.chooseBtnHooked = true
     return true
 end
 
-
--- --- Logic: Dynamic Favorite Sync ---
 function MD.Refresh()
     if not mainFrame or not mainFrame:IsShown() then return end
     
@@ -741,105 +1028,119 @@ end
 function MD.Show(choices)
     if not choices or #choices == 0 then return end
     if not EHTweaksDB.enableModernDraft then return end
-    
+
     CreateDraftFrame()
     if restoreBtn then restoreBtn:Hide() end
+
     
-    -- Calculate stats for the summary panel
     currentOwnedStats = CalculateAllOwnedStats()
     UpdateStatSummary(nil)
-    
+
     currentChoices = choices
     isSelecting = false
-    
+
     local num = #choices
     local cardHeights = {}
     local totalContainerHeight = 0
+
+    local cardSpacing = CARDSPACING or CARD_SPACING or 8
+    local cardWidth = CARDWIDTH or CARD_WIDTH or 340
+    local qi = QUALITYINFO
+    local thinBackdrop = BACKDROPTHIN or BACKDROP_THIN
+
     
-    -- PASS 1: Calculate Heights
     for i, data in ipairs(choices) do
         local descText = GetCardDescription(data.spellId, data.stack or 1)
         local h = CalculateCardHeight(descText)
         cardHeights[i] = h
-        
+
         totalContainerHeight = totalContainerHeight + h
         if i < num then
-            totalContainerHeight = totalContainerHeight + CARD_SPACING
+            totalContainerHeight = totalContainerHeight + cardSpacing
         end
     end
+
     
-    -- --- DYNAMIC WIDTH LOGIC ---
     local hasStats = false
     if currentOwnedStats then
         for k, v in pairs(currentOwnedStats) do
-            if v ~= 0 then 
-                hasStats = true 
-                break 
+            if v ~= 0 then
+                hasStats = true
+                break
             end
         end
     end
+
     
-    -- Resize Main Frame
-    local frameHeight = math.max(totalContainerHeight + 90, 200) 
+    local frameHeight = math.max(totalContainerHeight + 90, 200)
     mainFrame:SetHeight(frameHeight)
-    
+
     if hasStats then
-        mainFrame:SetWidth(680) -- Full width (Cards + Stats)
+        mainFrame:SetWidth(680) 
         mainFrame.statPanel:Show()
     else
-        mainFrame:SetWidth(360) -- Narrow width (Cards only)
+        mainFrame:SetWidth(360) 
         mainFrame.statPanel:Hide()
     end
-    
+
     mainFrame.cardContainer:SetHeight(totalContainerHeight)
     mainFrame.statPanel:SetHeight(totalContainerHeight)
 
-    -- PASS 2: Render Cards
-    local currentY = 0
     
+    local currentY = 0
+
     for i, data in ipairs(choices) do
         local card = GetCard(i)
         local h = cardHeights[i]
-        
-        card:SetSize(CARD_WIDTH, h)
+
+        card:SetSize(cardWidth, h)
         card:SetFrameLevel(220)
         card:Show()
-        
+
+        card:ClearAllPoints()
         card:SetPoint("TOPLEFT", mainFrame.cardContainer, "TOPLEFT", 0, -currentY)
-        currentY = currentY + h + CARD_SPACING
-        
+        currentY = currentY + h + cardSpacing
+
         local name, _, icon = GetSpellInfo(data.spellId)
+
         
-        -- Quality Color Logic
-        local qInfo = QUALITY_INFO[data.quality] or QUALITY_INFO[0]
+        local qInfo = nil
+        if qi then
+            qInfo = qi[data.quality] or qi[0]
+        end
+        if not qInfo then
+            qInfo = { r = 1, g = 1, b = 1 }
+        end
+
         
-        -- Store info for Hover Script
         card.qInfo = qInfo
         card.data = data
         data.name = name
         card.cardStats = GetSpellStats(data.spellId, 1)
+
         
-        -- Apply Colors & Text
         card.name:SetText(name or "Unknown Echo")
-        card.name:SetTextColor(qInfo.r, qInfo.g, qInfo.b)
+        card.name:SetTextColor(qInfo.r or 1, qInfo.g or 1, qInfo.b or 1)
+
         
-        -- Set Initial Thin Border & Background
-        card:SetBackdrop(BACKDROP_THIN)
-        card:SetBackdropColor(0.1, 0.1, 0.1, 0.9) -- Re-apply background color
-        card:SetBackdropBorderColor(qInfo.r, qInfo.g, qInfo.b, 1)
-        
+        if thinBackdrop then
+            card:SetBackdrop(thinBackdrop)
+        end
+        card:SetBackdropColor(0.1, 0.1, 0.1, 0.9)
+        card:SetBackdropBorderColor(qInfo.r or 1, qInfo.g or 1, qInfo.b or 1, 1)
+
         local descText = GetCardDescription(data.spellId, data.stack or 1)
         card.desc:SetText(descText)
-        
+
         card.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
-        
+
         local count = GetOwnedCount(name)
-        card.ownedText:SetText(count > 0 and "x"..count or "")
+        card.ownedText:SetText(count > 0 and "x" .. count or "")
+
         
-        -- --- FAVORITE LOGIC ---
-        card.star:Show() -- Ensure visible
+        card.star:Show() 
         local isFav = EHTweaksDB.favorites and EHTweaksDB.favorites[data.spellId]
-        
+
         if isFav then
             card.star:SetAlpha(1)
             card.btn:SetText("Select (F)")
@@ -847,42 +1148,72 @@ function MD.Show(choices)
             card.star:SetAlpha(0.2)
             card.btn:SetText("Select")
         end
+
         
-        -- Star Click
         card.star:SetScript("OnClick", function()
             local currentIsFav = EHTweaksDB.favorites and EHTweaksDB.favorites[data.spellId]
             SyncFavorite(data.spellId, name, not currentIsFav)
         end)
+
         
-        -- Keyboard Bind
-        local key1 = GetBindingKey("EHTWEAKS_DRAFT_"..i)
-        card.kbText:SetText(key1 and "["..key1.."]" or "")
+        local key1 = GetBindingKey("EHTWEAKS_DRAFT_" .. i)
+        card.kbText:SetText(key1 and "[" .. key1 .. "]" or "")
+
         
-        -- Select Action
         card.btn:SetScript("OnClick", function() MD.SelectOption(i) end)
+
+        
+        card.cardIndex = i
+
+        
+        local remainingBanishes = GetBanishInfo()
+        if remainingBanishes > 0 then
+            card.banBtn:SetText("Ban (" .. remainingBanishes .. ")")
+            card.banBtn:Enable()
+        else
+            card.banBtn:SetText("Ban")
+            card.banBtn:Disable()
+        end
+        card.banBtn:EnableMouse(true)
+        local capturedI = i
+        card.banBtn:SetScript("OnClick", function()
+            MD.BanishOption(capturedI)
+        end)
     end
-    
+
     for i = num + 1, #cardPool do
         cardPool[i]:Hide()
     end
+
     
-    -- MD.Refresh() -- DISABLED to prevent redundancy/recursion if triggered by SyncFavorite
-    
+
     UpdateRerollButton()
     PrimeRerollDataIfNeeded()
     StartRerollPolling()
-    
+
     mainFrame:Show()
 end
-
 
 function MD.Hide()
     rerollPollSeq = rerollPollSeq + 1
     if mainFrame then mainFrame:Hide() end
     if restoreBtn then restoreBtn:Hide() end
+    
+    
+    
+    
+    
+    After(3.0, function()
+        if not (mainFrame and mainFrame:IsShown()) then
+            MD.isInDraftSession = false
+        end
+    end)
 end
 
 function MD.Minimize()
+    
+    
+    MD.isInDraftSession = false
     rerollPollSeq = rerollPollSeq + 1
     if mainFrame then mainFrame:Hide() end
     if restoreBtn then restoreBtn:Show() end
@@ -892,32 +1223,176 @@ function MD.IsVisible()
     return mainFrame and mainFrame:IsVisible()
 end
 
--- --- Hooking ---
 local function HookInit()
     if not ProjectEbonhold or not ProjectEbonhold.PerkUI then return end
+
     
-    hooksecurefunc(ProjectEbonhold.PerkUI, "Show", function(choices)
-        if not (EHTweaksDB and EHTweaksDB.enableModernDraft) then return end
-        if not choices or #choices == 0 then return end
-        
-        MD.pendingChoices = choices
     
-        -- Ensure the button is hooked (it may not exist on the first tick)
-        if not HookChooseButton() then
-            After(0.10, HookChooseButton)
-            After(0.30, HookChooseButton)
+    
+    
+    
+if ProjectEbonhold.PerkUI.Show then
+    local origPerkUIShow = ProjectEbonhold.PerkUI.Show
+    ProjectEbonhold.PerkUI.Show = function(choices)
+        if EHTweaksDB and EHTweaksDB.enableModernDraft and choices and #choices > 0 then
+            MD.pendingChoices = choices
+
+              
+                
+                
+                
+                
+                
+                if MD.isInDraftSession then
+                    local pf = _G.ProjectEbonholdPerkFrame
+                    if pf and pf:IsShown() then pf:Hide() end
+
+                    local pb = _G.PerkChooseButton
+                    if pb and pb:IsShown() then pb:Hide() end
+
+                    if MD.UpdateInPlace then
+                        MD.UpdateInPlace(choices)
+                    else
+                        MD.Show(choices)
+                    end
+                    return
+                end
+
+                
+                
+
+                
+
+            
+            
+            
+            
+            
+
+            
+            
+
+            
+            
+            
+            
+            
+            
+            
+
+            
+            
+            origPerkUIShow(choices)
+
+            if not HookChooseButton() then
+                After(0.10, HookChooseButton)
+                After(0.30, HookChooseButton)
+            end
+
+            return
         end
-    end)
-    
+
+        origPerkUIShow(choices)
+    end
+end
+
     hooksecurefunc(ProjectEbonhold.PerkUI, "Hide", function()
         MD.Hide()
     end)
-    
-    -- Sync with external Favorite changes (Browser or original Echoes frame)
-    if EHTweaks_RefreshFavouredMarkers then
-        hooksecurefunc("EHTweaks_RefreshFavouredMarkers", function()
+
+    if EHTweaksRefreshFavouredMarkers then
+        hooksecurefunc("EHTweaksRefreshFavouredMarkers", function()
             if MD.IsVisible() then MD.Refresh() end
         end)
+    end
+
+    
+    
+    
+    if ProjectEbonhold.PerkUI.UpdateSinglePerk then
+        local origUpdateSinglePerk = ProjectEbonhold.PerkUI.UpdateSinglePerk
+        ProjectEbonhold.PerkUI.UpdateSinglePerk = function(perkIndex, newPerkData)
+            if not (EHTweaksDB and EHTweaksDB.enableModernDraft) or not MD.IsVisible() then
+                origUpdateSinglePerk(perkIndex, newPerkData)
+                return
+            end
+
+            local cardIdx = perkIndex + 1 
+
+            
+            if currentChoices and currentChoices[cardIdx] then
+                currentChoices[cardIdx].spellId = newPerkData.spellId
+                currentChoices[cardIdx].quality = newPerkData.quality or 0
+            end
+
+            local card = cardPool[cardIdx]
+            if card and card:IsShown() then
+                local name, _, icon = GetSpellInfo(newPerkData.spellId)
+                
+                
+                local qi = QUALITYINFO
+                local qInfo = qi and (qi[newPerkData.quality or 0] or qi[0])
+                    or { r = 1, g = 1, b = 1 }
+
+                card.name:SetText(name or "Unknown Echo")
+                card.name:SetTextColor(qInfo.r, qInfo.g, qInfo.b)
+                card.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+
+                if utils and utils.GetSpellDescription then
+                    card.desc:SetText(utils.GetSpellDescription(newPerkData.spellId, 999, newPerkData.stack or 1))
+                end
+
+                card:SetBackdropBorderColor(qInfo.r, qInfo.g, qInfo.b, 1)
+                card.qInfo = qInfo
+                card.data = newPerkData
+                card.data.name = name
+                card.cardIndex = cardIdx
+
+                RecalculateLayout()
+
+                
+                local capturedIdx = cardIdx
+                card.btn:SetScript("OnClick", function()
+                    if IsControlKeyDown() and IsShiftKeyDown() and not IsAltKeyDown() then
+                        MD.BanishOption(capturedIdx)
+                    else
+                        MD.SelectOption(capturedIdx)
+                    end
+                end)
+                if card.banBtn then
+                    card.banBtn:SetScript("OnClick", function()
+                        MD.BanishOption(capturedIdx)
+                    end)
+                end
+            end
+
+            
+            
+            
+            
+            isSelecting = false
+
+            
+            
+            
+            
+            
+            for _, c in ipairs(cardPool) do
+                if c and c:IsShown() then
+                    c.btn:EnableMouse(true)
+                    if c.banBtn then
+                        c.banBtn:Disable()
+                        c.banBtn:EnableMouse(false)
+                        c.banBtn:SetText("Ban...")
+                    end
+                end
+            end
+
+            After(1.0, function()
+                if not mainFrame or not mainFrame:IsShown() then return end            
+                UpdateBanishButtons() 
+            end)
+        end
     end
 end
 
@@ -925,7 +1400,6 @@ local f = CreateFrame("Frame")
 f:RegisterEvent("PLAYER_LOGIN")
 f:SetScript("OnEvent", HookInit)
 
--- Export keybind functions
 _G.EHTweaks_SelectDraftOption = function(i) MD.SelectOption(i) end
 _G.EHTweaksSelectDraftOption1 = function() MD.SelectOption(1) end
 _G.EHTweaksSelectDraftOption2 = function() MD.SelectOption(2) end

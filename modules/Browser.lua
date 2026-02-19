@@ -921,11 +921,18 @@ local function CreateBrowserFrame()
 		  row:SetScript("OnClick", function(self, button)
                     if not self.data then return end
 			  			    
-			if IsAltKeyDown() and button == "LeftButton" and self.data.isHistory then
+			if IsAltKeyDown() and button == "LeftButton" and self.data.isHistory and not IsControlKeyDown() then
 			    if self.data.spellId then
 				  EHTweaks_PromptDeleteEcho(self.data.spellId)
 			    end
 			    return
+			end
+			
+			if btn == "LeftButton" and IsControlKeyDown() and IsShiftKeyDown() then
+			print("1")
+			    if f.cardIndex then
+				  MD.BanishOption(f.cardIndex)
+			    end
 			end
                     
                     if button == "RightButton" and self.data.isHistory then
@@ -1046,16 +1053,28 @@ local function CreateBrowserFrame()
     sTitle:SetPoint("TOPLEFT", 20, -20)
     sTitle:SetText("EHTweaks Settings")
     
-    local lastObj = sTitle
+    -- Two-Column Layout Variables
+    local col1X = 20
+    local col2X = 300
+    local startY = -50
+    local itemSpacing = 26
+    local itemsPerCol = 8 -- Max items in first column before moving to second
+
+    local settingIndex = 0
+    local lastSettingButton = nil -- Used for anchoring the reload button below
+
     local function AddCheck(varName, label, onClick)
+        settingIndex = settingIndex + 1
         local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
         
-        -- Reduced Gap Logic
-        if lastObj == sTitle then
-            cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -5)
-        else
-            cb:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, 6)
-        end
+        -- Determine column and row
+        local col = (settingIndex <= itemsPerCol) and 1 or 2
+        local row = (settingIndex <= itemsPerCol) and (settingIndex - 1) or (settingIndex - itemsPerCol - 1)
+        
+        local x = (col == 1) and col1X or col2X
+        local y = startY - (row * itemSpacing)
+        
+        cb:SetPoint("TOPLEFT", settings, "TOPLEFT", x, y)
         
         local text = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         text:SetPoint("LEFT", cb, "RIGHT", 5, 1)
@@ -1069,14 +1088,23 @@ local function CreateBrowserFrame()
         
         cb:SetChecked(EHTweaksDB[varName])
         
-        lastObj = cb
+        -- Keep track of the last button added (lowest one visually)
+        -- We'll anchor the reload button below the longest column
+        if not lastSettingButton then
+            lastSettingButton = cb
+        else
+            local _, _, _, _, lastY = lastSettingButton:GetPoint()
+            if y < lastY then
+                lastSettingButton = cb
+            end
+        end
+        
         return cb
     end
 
     AddCheck("enableFilters", "Enhance Project Ebonhold with Filters")
     AddCheck("enableChatLinks", "Enhance Project Ebonhold with Chat Links")
     AddCheck("enableTracker", "Enhance Project Ebonhold with Objective Tracker")
-    
     AddCheck("minimapButtonHidden", "Hide Minimap Button", function(self, isChecked)
         if isChecked then
             if EHTweaks_HideMinimapButton then EHTweaks_HideMinimapButton() end
@@ -1084,25 +1112,22 @@ local function CreateBrowserFrame()
             if EHTweaks_ShowMinimapButton then EHTweaks_ShowMinimapButton() end
         end
     end)
-    
     AddCheck("enableLockedEchoWarning", "Warn on Death if Echo Locked")
-	AddCheck("showDraftFavorites", "Show 'FAVOURED' on Draft Cards")
-
-	AddCheck("showEmpowermentFavorites", "Show markers in 'My Echoes'", function(self, isChecked) 
-	    if HookEchoButtons then HookEchoButtons() end
-	end)
-
+    AddCheck("showDraftFavorites", "Show 'FAVOURED' on Draft Cards")
+    AddCheck("showEmpowermentFavorites", "Show markers in 'My Echoes'", function(self, isChecked) 
+        if HookEchoButtons then HookEchoButtons() end
+    end)
     AddCheck("enableIntensityWarning", "Warn on Intensity level change") 
     AddCheck("enableShadowFissureWarning", "Warn when Shadow Fissure (red circle) is spawned")
     AddCheck("chatWarnings", "Show Chat Warnings")
     AddCheck("chatInfo", "Show Chat Info (Intensity/Stats)")
-    
-    -- NEW SETTING: Modern Draft
-    AddCheck("enableModernDraft", "Enable Modern Draft UI |r |cffff5555(Experimental!)")
+    AddCheck("enableModernDraft", "Enable Modern Draft UI |cffff5555(Exp!)|r")    
+    AddCheck("collectEchoesFromChatLinks", "Collect Echoes from chat links")
 
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
-    reloadBtn:SetPoint("TOPLEFT", lastObj, "BOTTOMLEFT", 0, -9)
+    -- Position reload button below the last checkbox with some padding
+    reloadBtn:SetPoint("TOPLEFT", lastSettingButton, "BOTTOMLEFT", 0, -20)
     reloadBtn:SetText("Apply and Reload UI")
     reloadBtn:SetScript("OnClick", ReloadUI)
 

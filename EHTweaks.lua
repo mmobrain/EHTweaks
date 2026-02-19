@@ -54,7 +54,8 @@ local DEFAULTS = {
     enableShadowFissureWarning = true,
     chatWarnings = false,
     chatInfo = false,
-    enableModernDraft = false
+    enableModernDraft = false,
+    collectEchoesFromChatLinks = false
 }
 
 -- --- State ---
@@ -773,6 +774,77 @@ local function RecordEchoInfo(spellId, quality)
     EHTweaks_Log("SAVED Echo Record: " .. name .. " (" .. spellId .. ") Quality: " .. (quality or 0))
 end
 
+StaticPopupDialogs["EHTWEAKS_SAVE_ECHO_CONFIRM"] = {
+    text = "Save Echo to Database?",
+    button1 = "Yes",
+    button2 = "No",
+    OnAccept = function(self)
+        -- Data is stored in self.data table
+        if self.data and self.data.spellId then
+            RecordEchoInfo(self.data.spellId, 0)
+            print("|cff00FF00[EHTweaks]|r Echo saved: " .. (self.data.name or "Unknown"))
+            
+            -- Refresh Browser if it exists and is open
+            if EHTweaks_RefreshBrowser then
+                EHTweaks_RefreshBrowser()
+            end
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+local originalSetItemRef = SetItemRef
+
+function SetItemRef(link, text, button, chatFrame)
+    -- Always call original first to preserve default behavior
+    if originalSetItemRef then
+        originalSetItemRef(link, text, button, chatFrame)
+    end
+    
+    -- Check if feature is enabled
+    if not EHTweaksDB or not EHTweaksDB.collectEchoesFromChatLinks then
+        return
+    end
+    
+    -- Parse spell links: |Hspell:12345:0|h[Spell Name]|h or |Hspell:12345|h[Spell Name]|h
+    local spellId = string.match(link, "spell:(%d+)")
+    
+    if not spellId then
+        return
+    end
+    
+    spellId = tonumber(spellId)
+    
+    -- Validate spell exists
+    local spellName, _, spellIcon = GetSpellInfo(spellId)
+    if not spellName then
+        return
+    end
+    
+    -- Check if already in database
+    if EHTweaksDB.seenEchoes and EHTweaksDB.seenEchoes[spellId] then
+        -- Already saved, show info message
+        print("|cff00FF00[EHTweaks]|r Echo already in database: " .. spellName)
+        return
+    end
+    
+    -- Update the dialog text with spell info (icon + name)
+    StaticPopupDialogs["EHTWEAKS_SAVE_ECHO_CONFIRM"].text = 
+        "New Echo detected:|n|n|T" .. spellIcon .. ":24:24|t |cff71d5ff" .. spellName .. "|r|n|nSave to Echoes Database?"
+    
+    -- Show popup and pass data via the dialog object
+    local dialog = StaticPopup_Show("EHTWEAKS_SAVE_ECHO_CONFIRM")
+    if dialog then
+        dialog.data = {
+            spellId = spellId,
+            name = spellName,
+        }
+    end
+end
+
 local function RecordOwnedEchoes()
     local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
     if not granted then 
@@ -980,7 +1052,7 @@ local function EHT_SetupEmpowermentFrameMoveAndSave()
     frame:RegisterForDrag("LeftButton")
 
     -- ProjectEbonhold sets drag scripts directly to StartMoving/StopMovingOrSizing,
-    -- so we override to enforce Shift-only movement. [file:3]
+    -- so we override to enforce Shift-only movement.
     frame:SetScript("OnDragStart", function(self)
         if IsShiftKeyDown() then
             self:StartMoving()
