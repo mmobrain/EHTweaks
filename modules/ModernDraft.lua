@@ -510,64 +510,10 @@ local function UpdateStatSummary(hoverStats)
     end
 end
 
-local function SyncFavorite(spellId, name, shouldAdd)
-    if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
-    
-    local targetName = name
-    if not targetName then targetName = GetSpellInfo(spellId) end
-    
-    if shouldAdd then        
-        EHTweaksDB.favorites[spellId] = true        
-        if targetName and EHTweaksDB.seenEchoes then
-             for k, v in pairs(EHTweaksDB.seenEchoes) do
-                 if v.name == targetName then EHTweaksDB.favorites[k] = true end
-             end
-        end
-        print("|cff00FF00EHTweaks|r: Added '" .. (targetName or "Unknown") .. "' to Favorites!")
-    else
-        if targetName then
-            for k, v in pairs(EHTweaksDB.favorites) do
-                local n = GetSpellInfo(k)
-                if n == targetName then 
-                    EHTweaksDB.favorites[k] = nil 
-                end
-            end
-        else
-            EHTweaksDB.favorites[spellId] = nil
-        end
-        print("|cffFFFF00EHTweaks|r: Removed '" .. (targetName or "Unknown") .. "' from Favorites.")
+local function SyncFavorite(spellId, name)
+    if EHTweaks_ToggleFavorite then
+        EHTweaks_ToggleFavorite(spellId, name)
     end
-    
-    
-	
-	
-    if EHTweaks_RefreshFavouredMarkers then 
-        EHTweaks_RefreshFavouredMarkers() 
-    end
-    
-    
-    if cardPool then
-        for _, card in ipairs(cardPool) do
-            if card:IsShown() and card.data then
-                local isFav = EHTweaksDB.favorites and EHTweaksDB.favorites[card.data.spellId]
-                
-                
-                if card.star then
-                     card.star:SetAlpha(isFav and 1 or 0.2)
-                end
-                
-                
-                if card.btn then
-                     card.btn:SetText(isFav and "Select (F)" or "Select")
-                end
-            end
-        end
-    end
-    
-    
-    if EHTweaks_RefreshBrowser then EHTweaks_RefreshBrowser() end
-    
-    
 end
 
 local function GetOwnedCount(spellName)
@@ -1011,15 +957,21 @@ function MD.Refresh()
     for i, data in ipairs(currentChoices) do
         local card = GetCard(i)
         if card:IsShown() then
-            local isFav = EHTweaksDB.favorites and EHTweaksDB.favorites[data.spellId]
+            local isFav = false
+            if data.name and EHTweaksDB.favorites then
+                for k, v in pairs(EHTweaksDB.favorites) do
+                    if v and GetSpellInfo(k) == data.name then isFav = true break end
+                end
+            end
+            
             if isFav then
                 card.star:SetAlpha(1)
                 if card.star.tex then card.star.tex:SetVertexColor(1, 1, 1) end
-              
+                card.btn:SetText("Select (F)")
             else
                 card.star:SetAlpha(0.2)
                 if card.star.tex then card.star.tex:SetVertexColor(0.5, 0.5, 0.5) end
-              
+                card.btn:SetText("Select")
             end
         end
     end
@@ -1139,7 +1091,12 @@ function MD.Show(choices)
 
         
         card.star:Show() 
-        local isFav = EHTweaksDB.favorites and EHTweaksDB.favorites[data.spellId]
+        local isFav = false
+        if name and EHTweaksDB.favorites then
+            for k, v in pairs(EHTweaksDB.favorites) do
+                if v and GetSpellInfo(k) == name then isFav = true break end
+            end
+        end
 
         if isFav then
             card.star:SetAlpha(1)
@@ -1151,8 +1108,7 @@ function MD.Show(choices)
 
         
         card.star:SetScript("OnClick", function()
-            local currentIsFav = EHTweaksDB.favorites and EHTweaksDB.favorites[data.spellId]
-            SyncFavorite(data.spellId, name, not currentIsFav)
+            SyncFavorite(data.spellId, name)
         end)
 
         
@@ -1184,8 +1140,6 @@ function MD.Show(choices)
     for i = num + 1, #cardPool do
         cardPool[i]:Hide()
     end
-
-    
 
     UpdateRerollButton()
     PrimeRerollDataIfNeeded()

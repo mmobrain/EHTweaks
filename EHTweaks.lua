@@ -46,7 +46,6 @@ local DEFAULTS = {
     seenEchoes = {},
     perkButtonPos = nil,
     runFramePos = nil,
-    offeredOptionalDB = nil,
     minimapButtonAngle = 200,
     minimapButtonHidden = false,
     enableLockedEchoWarning = true,
@@ -54,8 +53,7 @@ local DEFAULTS = {
     enableShadowFissureWarning = true,
     chatWarnings = false,
     chatInfo = false,
-    enableModernDraft = false,
-    collectEchoesFromChatLinks = false
+    enableModernDraft = false
 }
 
 -- --- State ---
@@ -796,55 +794,6 @@ StaticPopupDialogs["EHTWEAKS_SAVE_ECHO_CONFIRM"] = {
     preferredIndex = 3,
 }
 
-local originalSetItemRef = SetItemRef
-
-function SetItemRef(link, text, button, chatFrame)
-    -- Always call original first to preserve default behavior
-    if originalSetItemRef then
-        originalSetItemRef(link, text, button, chatFrame)
-    end
-    
-    -- Check if feature is enabled
-    if not EHTweaksDB or not EHTweaksDB.collectEchoesFromChatLinks then
-        return
-    end
-    
-    -- Parse spell links: |Hspell:12345:0|h[Spell Name]|h or |Hspell:12345|h[Spell Name]|h
-    local spellId = string.match(link, "spell:(%d+)")
-    
-    if not spellId then
-        return
-    end
-    
-    spellId = tonumber(spellId)
-    
-    -- Validate spell exists
-    local spellName, _, spellIcon = GetSpellInfo(spellId)
-    if not spellName then
-        return
-    end
-    
-    -- Check if already in database
-    if EHTweaksDB.seenEchoes and EHTweaksDB.seenEchoes[spellId] then
-        -- Already saved, show info message
-        print("|cff00FF00[EHTweaks]|r Echo already in database: " .. spellName)
-        return
-    end
-    
-    -- Update the dialog text with spell info (icon + name)
-    StaticPopupDialogs["EHTWEAKS_SAVE_ECHO_CONFIRM"].text = 
-        "New Echo detected:|n|n|T" .. spellIcon .. ":24:24|t |cff71d5ff" .. spellName .. "|r|n|nSave to Echoes Database?"
-    
-    -- Show popup and pass data via the dialog object
-    local dialog = StaticPopup_Show("EHTWEAKS_SAVE_ECHO_CONFIRM")
-    if dialog then
-        dialog.data = {
-            spellId = spellId,
-            name = spellName,
-        }
-    end
-end
-
 local function RecordOwnedEchoes()
     local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
     if not granted then 
@@ -1016,7 +965,7 @@ local function EHT_InstallEmpowermentCloseButton(frame)
     if not frame.ehtCloseBtn then
         local close = CreateFrame("Button", "EHTEmpowermentCloseBtn", frame, "UIPanelCloseButton")
         close:SetSize(32, 32)
-        close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+        close:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", -6, 40)
         close:SetFrameStrata("DIALOG")
         close:SetFrameLevel(frame:GetFrameLevel() + 10)
 
@@ -1269,7 +1218,17 @@ local function UpdateEchoButtonVisual(btn)
     local spellId = btn.ehSpellId
     if not spellId then return end
     
-    local isFav = EHTweaksDB.favorites and EHTweaksDB.favorites[spellId]
+    local spellName = GetSpellInfo(spellId)
+    local isFav = false
+    if spellName and EHTweaksDB.favorites then
+        for k, v in pairs(EHTweaksDB.favorites) do
+            if v and GetSpellInfo(k) == spellName then
+                isFav = true
+                break
+            end
+        end
+    end
+    
     local showMarker = EHTweaksDB.showEmpowermentFavorites
     
     if isFav and showMarker then
@@ -1284,6 +1243,64 @@ local function UpdateEchoButtonVisual(btn)
         btn.favMarker:Show()
     else
         if btn.favMarker then btn.favMarker:Hide() end
+    end
+end
+
+local function HookEchoButtons()
+    local frame = _G.ProjectEbonholdEmpowermentFrame
+    if not frame or not frame.perkIcons then return end
+    
+    local list = GetPerkListSorted()
+    
+    for i, iconBtn in ipairs(frame.perkIcons) do
+        if list[i] then
+            iconBtn.ehSpellId = list[i].spellId
+            iconBtn:EnableMouse(true)
+            
+            -- Register both buttons
+            iconBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            
+            -- Hook OnClick (Hooking instead of setting prevents breaking Dev mode clicks)
+            if not iconBtn.hasEHTHook then
+                iconBtn:HookScript("OnClick", function(self, button)
+                    if button == "RightButton" and IsShiftKeyDown() then
+                        -- Toggle Favorite
+                        EHTweaks_ToggleFavorite(self.ehSpellId, GetSpellInfo(self.ehSpellId))
+                    elseif button == "LeftButton" and IsControlKeyDown() and IsAltKeyDown() then
+                        -- Standard EHT Link Logic (Ctrl+Alt)
+                        EHTweaks_HandleLinkClick(self.ehSpellId)
+                    end
+                end)
+                
+                -- Tooltip Hook
+                iconBtn:HookScript("OnEnter", function(self)
+                    local id = self.ehSpellId
+                    local spellName = id and GetSpellInfo(id)
+                    local isFav = false
+                    if spellName and EHTweaksDB.favorites then
+                        for k, v in pairs(EHTweaksDB.favorites) do
+                            if v and GetSpellInfo(k) == spellName then isFav = true break end
+                        end
+                    end
+                    
+                    if isFav then
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("|cffFFD700★ Favorited|r")
+                        GameTooltip:AddLine("|cff888888Shift+Right-Click to Unfavorite|r")
+                        GameTooltip:Show()
+                    else
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("|cff888888Shift+Right-Click to Favorite|r")
+                        GameTooltip:Show()
+                    end
+                end)
+                
+                iconBtn.hasEHTHook = true
+            end
+            
+            -- Always update visual when list refreshes
+            UpdateEchoButtonVisual(iconBtn)
+        end
     end
 end
 
@@ -1427,60 +1444,6 @@ local function SetupPerkButtons()
         PerkHideButton:HookScript("OnShow", RestorePerkButtonPosition)
     end
     RestorePerkButtonPosition()
-end
-
--- =========================================================
--- SECTION 5: STARTER DATABASE HANDLING
--- =========================================================
-
-local function IsDatabaseEmpty()
-    return (not EHTweaksDB.seenEchoes) or (next(EHTweaksDB.seenEchoes) == nil)
-end
-
-local function ImportStarterDB()
-    if not _G.ETHTweaks_OptionalDB_Data then return end
-    
-    local starter = _G.ETHTweaks_OptionalDB_Data
-    local code = starter.data
-    
-    if EHTweaks_ImportEchoes then
-        local count, err = EHTweaks_ImportEchoes(code)
-        if count > 0 then
-            print("|cff00ff00EHTweaks:|r Starter Database imported (" .. count .. " echoes).")
-            if starter.contributors then
-                print("|cff00ff00EHTweaks:|r This Echoes DB was created thanks to: " .. starter.contributors)
-            end
-        elseif err then
-            print("|cffff0000EHTweaks:|r Starter DB Import failed: " .. err)
-        end
-    end
-    
-    EHTweaksDB.offeredOptionalDB = starter.version
-end
-
-local function CheckStarterDatabase()
-    local starter = _G.ETHTweaks_OptionalDB_Data
-    if not starter then return end
-    
-    if EHTweaksDB.offeredOptionalDB == starter.version then return end
-    
-    if IsDatabaseEmpty() then
-        ImportStarterDB()
-    else
-        StaticPopupDialogs["EHTWEAKS_STARTER_DB"] = {
-            text = "EHTweaks Starter Database Update Available:\n" .. (starter.version or "Unknown") .. "\n" .. (starter.changelog or "") .. "\n\nDo you want to merge this database with your existing Echoes?",
-            button1 = "Merge",
-            button2 = "Ignore",
-            OnAccept = function()
-                ImportStarterDB()
-            end,
-            OnCancel = function()
-                EHTweaksDB.offeredOptionalDB = starter.version
-            end,
-            timeout = 0, whileDead = true, hideOnEscape = true
-        }
-        StaticPopup_Show("EHTWEAKS_STARTER_DB")
-    end
 end
 
 -- =========================================================
@@ -1953,54 +1916,57 @@ end
 -- SECTION: DRAFT ECHO RECORDING & FAVORITES
 -- =========================================================
 
--- 1. RECORDING
-local function RecordDraftEchoes(choices)
-    if not choices or not EHTweaksDB then return end
-    if not EHTweaksDB.seenEchoes then EHTweaksDB.seenEchoes = {} end
+-- Global Favorite Toggling Utility
+function EHTweaks_ToggleFavorite(spellId, spellName)
+    if not spellName and spellId then spellName = GetSpellInfo(spellId) end
+    if not spellName then return end
     
-    for _, choice in ipairs(choices) do
-        local spellId = choice.spellId
-        local quality = choice.quality
-        
-        if spellId and spellId > 0 then
-            if not EHTweaksDB.seenEchoes[spellId] then
-                 local name, _, icon = GetSpellInfo(spellId)
-                 if name then
-                     EHTweaksDB.seenEchoes[spellId] = {
-                         name = name,
-                         icon = icon,
-                         quality = quality
-                     }
-                 end
+    if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
+    
+    local isFav = false
+    for k, v in pairs(EHTweaksDB.favorites) do
+        if v and GetSpellInfo(k) == spellName then
+            isFav = true
+            break
+        end
+    end
+    
+    if isFav then
+        -- Remove all matching ranks
+        for k, v in pairs(EHTweaksDB.favorites) do
+            if GetSpellInfo(k) == spellName then EHTweaksDB.favorites[k] = nil end
+        end
+        print("|cffFFFF00EHTweaks|r: Removed '" .. spellName .. "' from Favorites.")
+    else
+        -- Add all matching ranks natively sourced from ProjectEbonhold
+        local added = false
+        if ProjectEbonhold and ProjectEbonhold.PerkDatabase then
+            for dbSpellId, _ in pairs(ProjectEbonhold.PerkDatabase) do
+                if GetSpellInfo(dbSpellId) == spellName then
+                    EHTweaksDB.favorites[dbSpellId] = true
+                    added = true
+                end
             end
         end
-    end
-end
-
--- 2. LOOKUP UTILS
-local function GetFavoritedEchoNames()
-    local names = {}
-    if not EHTweaksDB or not EHTweaksDB.favorites then return names end
-
-    for spellId, isFav in pairs(EHTweaksDB.favorites) do
-        if isFav then
-            local name = GetSpellInfo(spellId)
-            if name then names[name] = true end
+        -- Fallback
+        if not added and spellId then
+            EHTweaksDB.favorites[spellId] = true
         end
+        print("|cff00FF00EHTweaks|r: Added '" .. spellName .. "' to Favorites!")
     end
-    return names
+    
+    if EHTweaks_RefreshFavouredMarkers then EHTweaks_RefreshFavouredMarkers() end
 end
 
+-- 1. LOOKUP UTILS
 local function GetActivePerkCards()
     local mainFrame = _G["ProjectEbonholdPerkFrame"]
-    -- Strict check: Parent must be visible
     if not mainFrame or not mainFrame:IsShown() then return {} end
 
     local cards = {}
     local children = { mainFrame:GetChildren() }
 
     for _, child in ipairs(children) do
-        -- Strict check: Child must be visible
         if child:IsShown() and child.icon and child.selectButton and child.nameText then
             table.insert(cards, child)
         end
@@ -2008,118 +1974,50 @@ local function GetActivePerkCards()
     return cards
 end
 
-
--- Helper to clean color codes
 local function StripColor(text)
     if not text then return nil end
     return text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
 end
 
--- New Helper: Sets up the click logic ONCE per card
+-- 2. DRAFT CARD INTERACTION
 local function SetupCardInteraction(card)
     if card.ehtInteractionSetup then return end
     
     card:EnableMouse(true)
-    card:SetScript("OnMouseUp", function(self, button)
+    card:HookScript("OnMouseUp", function(self, button)
         if button == "RightButton" and IsShiftKeyDown() then
-            -- 1. Get Live Data
             local rawName = self.nameText and self.nameText:GetText()
             local cName = StripColor(rawName)
             if not cName then return end
             
-            -- 2. Check Live State (Is it CURRENTLY favored?)
-            local isCurrentlyFav = false
-            
-            -- Check logic: If ANY ID with this name is in DB, it's favored
-            if EHTweaksDB.favorites then
-                for k, v in pairs(EHTweaksDB.favorites) do
-                    if v then
-                        local n = GetSpellInfo(k)
-                        if n == cName then
-                            isCurrentlyFav = true
-                            break -- Found one, so it IS favored
-                        end
-                    end
-                end
-            end
-            
-            -- 3. Perform Toggle
-            if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
-            
-            if isCurrentlyFav then
-                -- REMOVE: Clear ALL entries matching this name (Clean cleanup)
-                for k, v in pairs(EHTweaksDB.favorites) do
-                    local n = GetSpellInfo(k)
-                    if n == cName then EHTweaksDB.favorites[k] = nil end
-                end
-                print("|cffFFFF00EHTweaks|r: Removed '" .. cName .. "' from Favorites.")
-            else
-                -- ADD: Find the specific ID for this card to save
-                local spellId = nil
-                
-                -- Strategy A: Match from choices (Best for Draft)
-                local choices = ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.GetCurrentChoice()
-                if choices then
-                     for _, choice in ipairs(choices) do
-                         local sName = GetSpellInfo(choice.spellId)
-                         if sName == cName then
-                             spellId = choice.spellId
-                             break
-                         end
+            local spellId = nil
+            local choices = ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.GetCurrentChoice()
+            if choices then
+                 for _, choice in ipairs(choices) do
+                     if GetSpellInfo(choice.spellId) == cName then
+                         spellId = choice.spellId
+                         break
                      end
-                end
-                
-                -- Strategy B: Fallback to DB History
-                if not spellId and EHTweaksDB.seenEchoes then
-                    for id, info in pairs(EHTweaksDB.seenEchoes) do
-                        if info.name == cName then spellId = id break end
-                    end
-                end
-                
-                if spellId then
-                    -- PRIMARY ADD
-                    EHTweaksDB.favorites[spellId] = true
-                    print("|cff00FF00EHTweaks|r: Added '" .. cName .. "' to Favorites!")
-                    
-                    -- SYNC FIX: Also add ALL other IDs with the same Name found in DB
-                    -- This ensures Browser sees it as favorite even if it tracks a different ID (quality)
-                    if EHTweaksDB.seenEchoes then
-                        for id, info in pairs(EHTweaksDB.seenEchoes) do
-                            if info.name == cName then
-                                EHTweaksDB.favorites[id] = true
-                            end
-                        end
-                    end
-                else
-                    print("|cffff0000EHTweaks|r: Could not resolve ID for '" .. cName .. "'")
-                end
+                 end
             end
             
-            -- 4. Trigger Refresh
-            -- This will call MarkFavouredEchoes again to update visuals
-            EHTweaks_RefreshFavouredMarkers()
-            
-            -- Refresh Browser
-            if EHTweaks and EHTweaks.RefreshBrowser then EHTweaks.RefreshBrowser() 
-            elseif EHTweaks_RefreshBrowser then EHTweaks_RefreshBrowser() end
+            EHTweaks_ToggleFavorite(spellId, cName)
         end
     end)
     
-    -- Tooltip Hook (Visual feedback on hover)
     card:HookScript("OnEnter", function(self)
         if IsShiftKeyDown() then
             GameTooltip:AddLine(" ")
             local cName = StripColor(self.nameText and self.nameText:GetText())
             
-            -- Live Check for Tooltip
-            local isF = false
+            local isFav = false
             if cName and EHTweaksDB.favorites then
                 for k, v in pairs(EHTweaksDB.favorites) do
-                    if v and GetSpellInfo(k) == cName then isF = true break end
+                    if v and GetSpellInfo(k) == cName then isFav = true break end
                 end
             end
             
-            if isF then
+            if isFav then
                 GameTooltip:AddLine("|cffFF0000Shift+Right-Click to Unfavorite|r")
             else
                 GameTooltip:AddLine("|cff00FF00Shift+Right-Click to Favorite|r")
@@ -2128,39 +2026,26 @@ local function SetupCardInteraction(card)
         end
     end)
     
-    -- Safety: manage mouse enablement
-    card:HookScript("OnHide", function(self) self:EnableMouse(false) end)
-    card:HookScript("OnShow", function(self) self:EnableMouse(true) end)
-
     card.ehtInteractionSetup = true
 end
 
-
--- Main Function: Refreshes Visuals (Called by EHTweaks_RefreshFavouredMarkers)
+-- 3. VISUAL FAVORITES (Old Frame)
 local function MarkFavouredEchoes()
     local cards = GetActivePerkCards()
     if #cards == 0 then return end
 
-    -- 1. Build Lookup Table for Visuals (Optimization)
-    -- Map Name -> True if favored
-    local favNames = {}
-    if EHTweaksDB.favorites then
-        for spellId, isFav in pairs(EHTweaksDB.favorites) do
-            if isFav then
-                local name = GetSpellInfo(spellId)
-                if name then favNames[name] = true end
-            end
-        end
-    end
-
     for i, card in ipairs(cards) do
-        -- Step A: Ensure Click Logic is Setup (Once per card lifetime)
         SetupCardInteraction(card)
 
-        -- Step B: Update Visuals based on Name
         local rawName = card.nameText and card.nameText:GetText()
         local cardName = StripColor(rawName)
-        local isFav = cardName and favNames[cardName]
+        
+        local isFav = false
+        if cardName and EHTweaksDB.favorites then
+            for k, v in pairs(EHTweaksDB.favorites) do
+                if v and GetSpellInfo(k) == cardName then isFav = true break end
+            end
+        end
 
         if EHTweaksDB.showDraftFavorites and isFav then
             if not card.ehtFavMarker then
@@ -2221,32 +2106,143 @@ local function MarkFavouredEchoes()
     end
 end
 
-
-
--- 4. GLOBAL REFRESH (Called by Browser)
-function EHTweaks_RefreshFavouredMarkers()
-    -- 1. Handle Original UI (ProjectEbonholdPerkFrame)
-    if _G.ProjectEbonholdPerkFrame and _G.ProjectEbonholdPerkFrame:IsShown() then
-        if EHTweaksDB.showDraftFavorites then
-            MarkFavouredEchoes() -- Your existing function for old UI
-        end
-    end
+-- 4. BROWSER INTEGRATION (NEW Ebonhold Feature)
+function EHTweaks_UpdateBrowserFavorites()
+    local scrollChild = _G.PerkBrowserScrollChild
+    if not scrollChild then return end
     
-    -- 2. Handle Modern Draft UI (MD.Show)
-    -- We need to check if MD is loaded and visible
-    if MD and MD.IsVisible and MD.IsVisible() then
-        -- Refresh the Modern UI visuals directly
-        -- We can just call the Refresh function we built into ModernDraft logic
-        -- asking it to re-evaluate the button text/stars without a full redraw if possible,
-        -- or just trigger a refresh.
-        if MD.Refresh then
-             MD.Refresh() 
+    local QUALITY_COLORS = {
+        [0] = { r=1.0, g=1.0, b=1.0 },
+        [1] = { r=0.1, g=1.0, b=0.1 },
+        [2] = { r=0.0, g=0.4, b=1.0 },
+        [3] = { r=0.6, g=0.2, b=1.0 },
+        [4] = { r=1.0, g=0.5, b=0.0 }
+    }
+    
+    local children = {scrollChild:GetChildren()}
+    for _, btn in ipairs(children) do
+        if btn.icon and btn.borderFrame then
+            if not btn.ehtEnhanced then
+                local star = btn:CreateTexture(nil, "OVERLAY", nil, 7)
+                star:SetTexture("Interface\\Icons\\inv_misc_gem_02")
+                star:SetSize(14, 14)
+                star:SetPoint("TOPRIGHT", btn.icon, "TOPRIGHT", 1, 1)
+                star:Hide()
+                btn.ehtStarIcon = star
+                
+                local favBorder = CreateFrame("Frame", nil, btn)
+                favBorder:SetSize(btn.borderFrame:GetWidth() + 6, btn.borderFrame:GetHeight() + 6)
+                favBorder:SetPoint("CENTER", btn.borderFrame, "CENTER", 0, 0)
+                
+                local targetLevel = btn.borderFrame:GetFrameLevel() - 1
+                if targetLevel < 1 then targetLevel = 1 end
+                favBorder:SetFrameLevel(targetLevel)
+                
+                favBorder:SetBackdrop({
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    edgeSize = 22, 
+                    insets = { left = -2, right = -2, top = -2, bottom = -2 }
+                })
+                favBorder:Hide()
+                btn.ehtQBorder = favBorder
+                
+                btn:HookScript("OnClick", function(self, button)
+                    if button == "RightButton" and self.spellId then
+                        -- Prevent triggering if dev modifiers are used
+                        if not IsShiftKeyDown() and not IsControlKeyDown() and not IsAltKeyDown() then
+                            EHTweaks_ToggleFavorite(self.spellId, GetSpellInfo(self.spellId))
+                        end
+                    end
+                end)
+                
+                btn:HookScript("OnEnter", function(self)
+                    if self.spellId then
+                        local spellName = GetSpellInfo(self.spellId)
+                        local isFav = false
+                        if spellName and EHTweaksDB.favorites then
+                            for k, v in pairs(EHTweaksDB.favorites) do
+                                if v and GetSpellInfo(k) == spellName then isFav = true break end
+                            end
+                        end
+                        
+                        GameTooltip:AddLine(" ")
+                        if isFav then
+                            GameTooltip:AddLine("|cffFF0000Right-Click to Unfavorite|r")
+                        else
+                            GameTooltip:AddLine("|cff00FF00Right-Click to Favorite|r")
+                        end
+                        GameTooltip:Show()
+                    end
+                end)
+                
+                btn.ehtEnhanced = true
+            end
+            
+            -- Visibility and color updating
+            if btn:IsShown() and btn.spellId then
+                local spellName = GetSpellInfo(btn.spellId)
+                local isFav = false
+                if spellName and EHTweaksDB.favorites then
+                    for k, v in pairs(EHTweaksDB.favorites) do
+                        if v and GetSpellInfo(k) == spellName then isFav = true break end
+                    end
+                end
+                
+                if isFav then
+                    btn.ehtStarIcon:Show()
+                    -- Retrieve the quality directly from the button's embedded perkData
+                    local q = btn.perkData and btn.perkData.quality or 0
+                    local c = QUALITY_COLORS[q] or QUALITY_COLORS[0]
+                    
+                    btn.ehtQBorder:SetBackdropBorderColor(c.r, c.g, c.b, 0.9)
+                    btn.ehtQBorder:SetBackdropColor(c.r, c.g, c.b, 0.2) -- Color the background with 0.3 alpha glow
+                    btn.ehtQBorder:Show()
+                else
+                    btn.ehtStarIcon:Hide()
+                    btn.ehtQBorder:Hide()
+                end
+            else
+                btn.ehtStarIcon:Hide()
+                btn.ehtQBorder:Hide()
+            end
         end
     end
 end
 
+local browserFavTimer = 0
+local browserFavFrame = CreateFrame("Frame")
+browserFavFrame:SetScript("OnUpdate", function(self, elapsed)
+    if _G.PerkBrowserFrame and _G.PerkBrowserFrame:IsVisible() then
+        browserFavTimer = browserFavTimer + elapsed
+        if browserFavTimer > 0.15 then
+            browserFavTimer = 0
+            EHTweaks_UpdateBrowserFavorites()
+        end
+    end
+end)
 
--- 5. VISIBILITY BUTTON HOOKS (For Refresh)
+-- 5. GLOBAL REFRESH
+function EHTweaks_RefreshFavouredMarkers()
+    if _G.ProjectEbonholdPerkFrame and _G.ProjectEbonholdPerkFrame:IsShown() then
+        if EHTweaksDB.showDraftFavorites then
+            MarkFavouredEchoes() 
+        end
+    end
+    
+    if MD and MD.IsVisible and MD.IsVisible() then
+        if MD.Refresh then MD.Refresh() end
+    end
+    
+    if _G.ProjectEbonholdEmpowermentFrame and _G.ProjectEbonholdEmpowermentFrame:IsShown() then
+        if HookEchoButtons then HookEchoButtons() end
+    end
+    
+    if EHTweaks_UpdateBrowserFavorites then
+        EHTweaks_UpdateBrowserFavorites()
+    end
+end
+
+-- 6. VISIBILITY BUTTON HOOKS (For Refresh)
 local function HookPerkVisibilityButtons()
     local chooseButton = _G.PerkChooseButton
     local hideButton = _G.PerkHideButton
@@ -2290,11 +2286,6 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             EHTweaks_ShowMinimapButton()
         end
         
-        C_Timer.After(2, CheckStarterDatabase)
-	  
-	
-	  	
-        
         -- HOOKS
         if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateGrantedPerks then
             hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateGrantedPerks", function()
@@ -2308,15 +2299,15 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                     end
                 end
                 if EHTweaksDB.enableChatLinks then HookEchoButtons() end
-		    
-		     if not _G.ProjectEbonholdEmpowermentFrame then return end
+            
+             if not _G.ProjectEbonholdEmpowermentFrame then return end
         if not _G.ProjectEbonholdEmpowermentFrame.EHT_MoverInstalled then
             EHT_SetupEmpowermentFrameMoveAndSave()
         end
             end)
         end
-	  
-	  -- Hook Intensity for Warning System
+      
+      -- Hook Intensity for Warning System
         if ProjectEbonhold and ProjectEbonhold.PlayerRunUI and ProjectEbonhold.PlayerRunUI.UpdateIntensity then
             hooksecurefunc(ProjectEbonhold.PlayerRunUI, "UpdateIntensity", function(data)
                 if data and data.intensity then
@@ -2340,49 +2331,49 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                         
             end)
         end
-	  
-	  if CTimer and CTimer.After and ProjectEbonhold then
-	    CTimer.After(2, function()		
-		EHTweaks_InitIntensityWarningTweaks(0)
-	    end)
-	  end
-	  
-	  
-	  local function EHT_HookEmpowermentToggle()
-	    if _G.ToggleEmpowermentPanel and not _G.ToggleEmpowermentPanel_EHTHooked then
-		  local original = _G.ToggleEmpowermentPanel
-		  _G.ToggleEmpowermentPanel = function()
-			original()
-			
-			-- Refresh close button after toggle
-			CTimer.After(0.1, function()
-			    local frame = _G.ProjectEbonholdEmpowermentFrame
-			    if frame and frame.ehtCloseBtn then
-				  if frame:IsShown() then
-					frame.ehtCloseBtn:ClearAllPoints()
-					frame.ehtCloseBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
-					frame.ehtCloseBtn:Show()
-					if frame.ehtCloseBtn.Raise then frame.ehtCloseBtn:Raise() end
-				  else
-					frame.ehtCloseBtn:Hide()
-				  end
-			    end
-			end)
-		  end
-		  _G.ToggleEmpowermentPanel_EHTHooked = true
-	    end
-	end
+      
+      if CTimer and CTimer.After and ProjectEbonhold then
+        CTimer.After(2, function()		
+        EHTweaks_InitIntensityWarningTweaks(0)
+        end)
+      end
+      
+      
+      local function EHT_HookEmpowermentToggle()
+        if _G.ToggleEmpowermentPanel and not _G.ToggleEmpowermentPanel_EHTHooked then
+          local original = _G.ToggleEmpowermentPanel
+          _G.ToggleEmpowermentPanel = function()
+            original()
+            
+            -- Refresh close button after toggle
+            CTimer.After(0.1, function()
+                local frame = _G.ProjectEbonholdEmpowermentFrame
+                if frame and frame.ehtCloseBtn then
+                  if frame:IsShown() then
+                    frame.ehtCloseBtn:ClearAllPoints()
+                    frame.ehtCloseBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
+                    frame.ehtCloseBtn:Show()
+                    if frame.ehtCloseBtn.Raise then frame.ehtCloseBtn:Raise() end
+                  else
+                    frame.ehtCloseBtn:Hide()
+                  end
+                end
+            end)
+          end
+          _G.ToggleEmpowermentPanel_EHTHooked = true
+        end
+    end
 
-	-- Call this after successful init:
-	if CTimer and CTimer.After and ProjectEbonhold then
-	    CTimer.After(2, function()
-		  EHTweaks_InitEmpowermentFrameTweaks(0)
-		  EHTweaks_InitIntensityWarningTweaks(0)
-		  
-		  -- Hook the toggle function after frames exist
-		  CTimer.After(1, EHT_HookEmpowermentToggle)
-	    end)
-	end
+    -- Call this after successful init:
+    if CTimer and CTimer.After and ProjectEbonhold then
+        CTimer.After(2, function()
+          EHTweaks_InitEmpowermentFrameTweaks(0)
+          EHTweaks_InitIntensityWarningTweaks(0)
+          
+          -- Hook the toggle function after frames exist
+          CTimer.After(1, EHT_HookEmpowermentToggle)
+        end)
+    end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         if _G.skillTreeFrame and not _G.skillTreeFrame.EHTweaksHooked then
@@ -2419,9 +2410,9 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                  UpdateEHObjectiveDisplay(ProjectEbonhold.ObjectivesService.GetActiveObjective())
              end
         end)
-	  
-	
-	    -- --- SILENT SKILL TREE DATA REQUEST (PRELOAD CHARACTER ID) ---        
+      
+    
+        -- --- SILENT SKILL TREE DATA REQUEST (PRELOAD CHARACTER ID) ---        
         C_Timer.After(3, function()
             -- 1. Check if we already have the ID (Success condition)
             local id = EHTweaks_GetActiveLoadoutInfo()
@@ -2430,29 +2421,23 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
             -- 2. Attempt: Use the addon's exposed function (Clean Method)
             if ProjectEbonhold and ProjectEbonhold.RequestLoadoutFromServer then
                  ProjectEbonhold.RequestLoadoutFromServer()
-                  --print("EHTweaks: RequestLoadoutFromServer called.") 
             end
 
             -- 3. Validation & Fallback: Wait 1 more second to see if it worked
             C_Timer.After(1, function()
                 local checkId = EHTweaks_GetActiveLoadoutInfo()		    
                 if checkId and checkId ~= 0 then return end -- Success!
-			    -- FALLBACK: The "Blink" Method (Open & Close UI)
-			    -- This forces the addon to run its own OnShow logic which requests data
-			    if _G.skillTreeFrame and not _G.skillTreeFrame:IsShown() then
-				  
-				  _G.skillTreeFrame:Show()
-				  _G.skillTreeFrame:Hide()
-			    elseif _G.EHTweaks_ToggleSkillTree then
-				  -- Use our own toggle if frame ref is missing. Probably will not work if above fails because we call same code.			  
-				  _G.EHTweaksToggleSkillTree() -- Open
-				  _G.EHTweaksToggleSkillTree() -- Close
-			    end
+                -- FALLBACK: The "Blink" Method (Open & Close UI)
+                if _G.skillTreeFrame and not _G.skillTreeFrame:IsShown() then
+                  
+                  _G.skillTreeFrame:Show()
+                  _G.skillTreeFrame:Hide()
+                elseif _G.EHTweaks_ToggleSkillTree then
+                  _G.EHTweaksToggleSkillTree() -- Open
+                  _G.EHTweaksToggleSkillTree() -- Close
+                end
             end)
         end)
-
-
-	    
 
     elseif event == "PLAYER_DEAD" then
         C_Timer.After(1, CheckLockedEchoes)
@@ -2665,11 +2650,7 @@ local function CreateMiniRunBar(mainFrame)
         eb:EnableMouse(true)
         eb:RegisterForClicks("LeftButtonUp")
 
-        local btnBg = eb:CreateTexture(nil, "BACKGROUND")
-        btnBg:SetAllPoints()
-        btnBg:SetTexture("Interface\\Buttons\\WHITE8X8")
-        btnBg:SetVertexColor(0.2, 0.2, 0.2, 0.8)
-        
+     
         local label = eb:CreateFontString(nil, "OVERLAY", "SystemFont_Outline_Small")
         label:SetPoint("CENTER", 0, 0)
         label:SetText("E")
@@ -2813,6 +2794,15 @@ local function InitMinimizer(numTries)
         return
     end
 
+    if not mainFrame.ehtHookedShow then
+        hooksecurefunc(mainFrame, "Show", function(self)
+            if EHTweaksDB and EHTweaksDB.runFrameCollapsed then
+                self:Hide()
+            end
+        end)
+        mainFrame.ehtHookedShow = true
+    end
+
     local mini = CreateMiniRunBar(mainFrame)
 
     if not mainFrame.ehtMinimizeBtn then
@@ -2854,11 +2844,24 @@ local function InitMinimizer(numTries)
     
     C_Timer.NewTicker(1, SyncMiniTracker)
 
-    if EHTweaksDB.runFrameCollapsed then
-        mainFrame:Hide()
-        if ehObjectiveFrame then ehObjectiveFrame:Hide() end
-        mini:Show()
+    -- Force alignment of visible frames on load
+    local function ApplyState()
+        if EHTweaksDB and EHTweaksDB.runFrameCollapsed then
+            mainFrame:Hide()
+            if ehObjectiveFrame then ehObjectiveFrame:Hide() end
+            mini:Show()
+            UpdateMiniBarText()
+            SyncMiniTracker()
+        else
+            mini:Hide()
+        end
     end
+
+    ApplyState()
+    
+    -- Safety triggers to ensure ProjectEbonhold's delayed loading doesn't override our state
+    C_Timer.After(0.5, ApplyState)
+    C_Timer.After(2.0, ApplyState)
 end
 
 local loader = CreateFrame("Frame")

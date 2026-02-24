@@ -427,8 +427,6 @@ RefreshData = function()
         browserData = BuildTreeData() 
     elseif activeTab == 2 then
         browserData = BuildPerkData() 
-    elseif activeTab == 3 then
-        browserData = BuildHistoryData() 
     else
         wipe(browserData)
     end
@@ -442,7 +440,6 @@ RefreshData = function()
         local color = "|cffffffff"
         if activeTab == 1 then color = "|cffFFD700" end
         if activeTab == 2 then color = "|cff00FF00" end
-        if activeTab == 3 then color = "|cff0070DD" end
         
         browserFrame.countLabel:SetText(string.format("%sItems: %d / %d|r", color, count, total))
     end
@@ -575,14 +572,13 @@ end
 local function UpdateScroll()
     if not browserFrame then return end
     
-    if activeTab >= 4 then 
+    if activeTab >= 3 then 
         if browserFrame.scroll then browserFrame.scroll:Hide() end
         if browserFrame.searchBox then browserFrame.searchBox:Hide() end
         if browserFrame.searchLabel then browserFrame.searchLabel:Hide() end
         if browserFrame.listContainer then browserFrame.listContainer:Hide() end
         if browserFrame.rows then for _, r in ipairs(browserFrame.rows) do r:Hide() end end
-        if browserFrame.settingsFrame then if activeTab == 4 then browserFrame.settingsFrame:Show() else browserFrame.settingsFrame:Hide() end end
-        if browserFrame.importFrame then if activeTab == 5 then browserFrame.importFrame:Show() else browserFrame.importFrame:Hide() end end
+        if browserFrame.settingsFrame then if activeTab == 3 then browserFrame.settingsFrame:Show() else browserFrame.settingsFrame:Hide() end end
         return
     else
         if browserFrame.scroll then browserFrame.scroll:Show() end
@@ -590,7 +586,6 @@ local function UpdateScroll()
         if browserFrame.searchLabel then browserFrame.searchLabel:Show() end
         if browserFrame.listContainer then browserFrame.listContainer:Show() end
         if browserFrame.settingsFrame then browserFrame.settingsFrame:Hide() end
-        if browserFrame.importFrame then browserFrame.importFrame:Hide() end
     end
 
     if isDataDirty then RefreshData() end
@@ -621,7 +616,7 @@ local function UpdateScroll()
                     row.cost:SetPoint("RIGHT", row.favMark, "LEFT", -5, 0)
                     
                     -- Goldish/Greenish Background                    
-			  row.bg:SetVertexColor(0.1, 0.4, 0.0, 0.4)
+                    row.bg:SetVertexColor(0.1, 0.4, 0.0, 0.4)
                 else
                     row.favMark:Hide()
                     -- Reset anchor if no gem
@@ -635,25 +630,9 @@ local function UpdateScroll()
                     row.name:SetText(data.name)
                     row.name:SetTextColor(color.r, color.g, color.b)
                     
-                    if data.isHistory then
-                        local pips = ""
-                        local map = data.qualityMap or {}
-                        -- Pips: Common, Uncommon, Rare, Epic, Legendary
-                        local chars = {"C","U","R","E","L"}
-                        local colors = {"ffffffff", "ff1eff00", "ff0070dd", "ffa335ee", "ffff8000"}
-                        for q=0,4 do
-                            if map[q] then pips = pips.."|c"..colors[q+1]..chars[q+1].."|r " 
-                            else pips = pips.."|cff555555"..chars[q+1].."|r " end
-                        end
-                        row.cost:SetText(pips)
-                        local hName = QUALITY_COLORS[data.quality] and QUALITY_COLORS[data.quality].name or "Unknown"
-                        row.typeText:SetText(hName)
-                        row.typeText:SetTextColor(color.r, color.g, color.b)
-                    else
-                        row.cost:SetText("Stack: " .. (data.stack or 1))
-                        row.typeText:SetText(color.name)
-                        row.typeText:SetTextColor(color.r, color.g, color.b)
-                    end
+                    row.cost:SetText("Stack: " .. (data.stack or 1))
+                    row.typeText:SetText(color.name)
+                    row.typeText:SetTextColor(color.r, color.g, color.b)
                 else
                     row.name:SetText(data.name)
                     row.name:SetTextColor(1, 1, 1)
@@ -727,18 +706,18 @@ local function CreateBrowserFrame()
     sb:SetPoint("TOPRIGHT", -30, -32)
     sb:SetAutoFocus(false)
     sb:SetScript("OnTextChanged", function(self) self.updateDelay = 0.3 end)
-	sb:SetScript("OnUpdate", function(self, elapsed)
-	    elapsed = math.min(elapsed or 0, 0.1)
+    sb:SetScript("OnUpdate", function(self, elapsed)
+        elapsed = math.min(elapsed or 0, 0.1)
 
-	    if self.updateDelay then
-		  self.updateDelay = self.updateDelay - elapsed
-		  if self.updateDelay <= 0 then
-			self.updateDelay = nil
-			ApplyFilter()
-			UpdateScroll()
-		  end
-	    end
-	end)
+        if self.updateDelay then
+          self.updateDelay = self.updateDelay - elapsed
+          if self.updateDelay <= 0 then
+            self.updateDelay = nil
+            ApplyFilter()
+            UpdateScroll()
+          end
+        end
+    end)
 
     f.searchBox = sb
     
@@ -807,7 +786,7 @@ local function CreateBrowserFrame()
         return tab
     end
     
-    local tabNames = {"Skills", "My Echoes", "Echoes DB", "Settings", "Import/DB"}
+    local tabNames = {"Skills", "My Echoes", "Settings"}
     local prevTab
     for i, name in ipairs(tabNames) do
         local t = CreateNavTab(i, name)
@@ -820,7 +799,7 @@ local function CreateBrowserFrame()
         prevTab = t
     end
 
-     f.CreateRows = function(self)
+    f.CreateRows = function(self)
         local h = self:GetHeight()
         local availableH = h - 90 
         local count = math.floor(availableH / ROW_HEIGHT)
@@ -872,38 +851,18 @@ local function CreateBrowserFrame()
                 cost:SetPoint("RIGHT", favMark, "LEFT", -5, 0)
                 row.cost = cost
                                
-                
                 row:SetScript("OnEnter", function(self)
                     if not self.data then return end
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:ClearLines()
                     
                     if self.data.isPerk then
-                        if self.data.isHistory and self.data.qualityMap then
-                            local color = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
-                            GameTooltip:AddLine(self.data.name, color.r, color.g, color.b)
-                            GameTooltip:AddLine(" ")
-                            for q = 0, 4 do
-                                local sID = self.data.qualityMap[q]
-                                if sID then
-                                    local qColor = QUALITY_COLORS[q]
-                                    local qName = qColor.name or "Unknown"
-                                    local desc = utils and utils.GetSpellDescription(sID, 999, 1) or "No Description"
-                                    GameTooltip:AddLine(qName, qColor.r, qColor.g, qColor.b)
-                                    GameTooltip:AddLine(desc, 1, 0.82, 0, true)
-                                    GameTooltip:AddLine(" ")
-                                end
-                            end
-                            GameTooltip:AddLine("Right-Click to Toggle Favorite", 1, 0.82, 0)
-				    GameTooltip:AddLine("|cffFF4444Alt+Left-Click to Delete|r", 0.7, 0.7, 0.7)
-                        else
-                            local c = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
-                            GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
-                            local desc = GetRichDescription and GetRichDescription(self.data)
-                            if desc then GameTooltip:AddLine(desc, 1, 0.82, 0, true) end
-                            GameTooltip:AddLine(" ")
-                            GameTooltip:AddLine("Current Stack: " .. (self.data.stack or 1), 1, 1, 1)
-                        end
+                        local c = QUALITY_COLORS[self.data.quality] or QUALITY_COLORS[0]
+                        GameTooltip:AddLine(self.data.name, c.r, c.g, c.b)
+                        local desc = GetRichDescription and GetRichDescription(self.data)
+                        if desc then GameTooltip:AddLine(desc, 1, 0.82, 0, true) end
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("Current Stack: " .. (self.data.stack or 1), 1, 1, 1)
                     else
                         GameTooltip:AddLine(self.data.name, 1, 1, 1)
                         for i, spellId in ipairs(self.data.ranks or {}) do
@@ -918,60 +877,13 @@ local function CreateBrowserFrame()
                 end)
                 row:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 
-		  row:SetScript("OnClick", function(self, button)
+                row:SetScript("OnClick", function(self, button)
                     if not self.data then return end
-			  			    
-			if IsAltKeyDown() and button == "LeftButton" and self.data.isHistory and not IsControlKeyDown() then
-			    if self.data.spellId then
-				  EHTweaks_PromptDeleteEcho(self.data.spellId)
-			    end
-			    return
-			end
-			
-			if btn == "LeftButton" and IsControlKeyDown() and IsShiftKeyDown() then
-			print("1")
-			    if f.cardIndex then
-				  MD.BanishOption(f.cardIndex)
-			    end
-			end
-                    
-                    if button == "RightButton" and self.data.isHistory then
-                        if not EHTweaksDB.favorites then EHTweaksDB.favorites = {} end
-                        
-                        local id = self.data.spellId
-                        local name = self.data.name
-                        if not name then name = GetSpellInfo(id) end
-                        
-                        if EHTweaksDB.favorites[id] then
-                            if name then
-                                for k, v in pairs(EHTweaksDB.favorites) do
-                                    local n = GetSpellInfo(k)
-                                    if n == name then 
-                                        EHTweaksDB.favorites[k] = nil 
-                                    end
-                                end
-                            else
-                                EHTweaksDB.favorites[id] = nil
-                            end
-                            print("|cffFFFF00EHTweaks|r: Removed '" .. (name or "Unknown") .. "' from Favorites.")
-                        else
-                            EHTweaksDB.favorites[id] = true
-                            print("|cff00FF00EHTweaks|r: Added '" .. (name or "Unknown") .. "' to Favorites!")
-                            
-                            if name and EHTweaksDB.seenEchoes then
-                                 for k, v in pairs(EHTweaksDB.seenEchoes) do
-                                     if v.name == name then EHTweaksDB.favorites[k] = true end
-                                 end
-                            end
+                                        
+                    if button == "LeftButton" and IsControlKeyDown() and IsShiftKeyDown() then
+                        if f.cardIndex then
+                            MD.BanishOption(f.cardIndex)
                         end
-                        
-                        isDataDirty = true
-                        UpdateScroll()
-                        
-                        if EHTweaks_RefreshFavouredMarkers then 
-                            EHTweaks_RefreshFavouredMarkers() 
-                        end
-                        return
                     end
                     
                     if EHTweaks_HandleLinkClick and EHTweaks_HandleLinkClick(self.data.spellId) then return end
@@ -1020,7 +932,6 @@ local function CreateBrowserFrame()
                     end
                 end)
 
-                
                 self.rows[i] = row
             end
         end
@@ -1058,16 +969,15 @@ local function CreateBrowserFrame()
     local col2X = 300
     local startY = -50
     local itemSpacing = 26
-    local itemsPerCol = 8 -- Max items in first column before moving to second
+    local itemsPerCol = 8
 
     local settingIndex = 0
-    local lastSettingButton = nil -- Used for anchoring the reload button below
+    local lastSettingButton = nil
 
     local function AddCheck(varName, label, onClick)
         settingIndex = settingIndex + 1
         local cb = CreateFrame("CheckButton", nil, settings, "UICheckButtonTemplate")
         
-        -- Determine column and row
         local col = (settingIndex <= itemsPerCol) and 1 or 2
         local row = (settingIndex <= itemsPerCol) and (settingIndex - 1) or (settingIndex - itemsPerCol - 1)
         
@@ -1088,8 +998,6 @@ local function CreateBrowserFrame()
         
         cb:SetChecked(EHTweaksDB[varName])
         
-        -- Keep track of the last button added (lowest one visually)
-        -- We'll anchor the reload button below the longest column
         if not lastSettingButton then
             lastSettingButton = cb
         else
@@ -1121,12 +1029,10 @@ local function CreateBrowserFrame()
     AddCheck("enableShadowFissureWarning", "Warn when Shadow Fissure (red circle) is spawned")
     AddCheck("chatWarnings", "Show Chat Warnings")
     AddCheck("chatInfo", "Show Chat Info (Intensity/Stats)")
-    AddCheck("enableModernDraft", "Enable Modern Draft UI |cffff5555(Exp!)|r")    
-    AddCheck("collectEchoesFromChatLinks", "Collect Echoes from chat links")
+    AddCheck("enableModernDraft", "Enable Modern Draft UI |cffff5555(Exp!)|r")
 
     local reloadBtn = CreateFrame("Button", nil, settings, "UIPanelButtonTemplate")
     reloadBtn:SetSize(160, 30)
-    -- Position reload button below the last checkbox with some padding
     reloadBtn:SetPoint("TOPLEFT", lastSettingButton, "BOTTOMLEFT", 0, -20)
     reloadBtn:SetText("Apply and Reload UI")
     reloadBtn:SetScript("OnClick", ReloadUI)
@@ -1136,177 +1042,9 @@ local function CreateBrowserFrame()
     warn:SetText("Note: Browser features (this window) will remain active regardless of these settings.")
     warn:SetTextColor(0.6, 0.6, 0.6)
 
-    -- --- IMPORT/EXPORT FRAME ---
-    local import = CreateFrame("Frame", nil, f)
-    import:SetPoint("TOPLEFT", 10, -60)
-    import:SetPoint("BOTTOMRIGHT", -10, 40)
-    Skin.ApplyInset(import)
-    import:Hide()
-    f.importFrame = import
-    
-    local iTitle = import:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    iTitle:SetPoint("TOPLEFT", 20, -20)
-    iTitle:SetText("Import / Export Echoes")
-    
-    local h1 = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    h1:SetPoint("TOPLEFT", iTitle, "BOTTOMLEFT", 0, -20)
-    h1:SetText("Share your Echoes DB with others.")   
-    
-    local exportBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
-    exportBtn:SetSize(160, 30)
-    exportBtn:SetPoint("TOPLEFT", h1, "BOTTOMLEFT", 0, -10)
-    exportBtn:SetText("Export Echoes")
-    exportBtn:SetScript("OnClick", function()
-        if ProjectEbonhold and ProjectEbonhold.PerkService then
-            local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
-            if granted then
-                for spellName, instances in pairs(granted) do
-                    for _, info in ipairs(instances) do
-                        if EHTweaks_RecordEchoInfo then
-                            EHTweaks_RecordEchoInfo(info.spellId, info.quality)
-                        end
-                    end
-                end
-            end
-        end
-        local str = EHTweaks_ExportEchoes and EHTweaks_ExportEchoes() or ""
-        StaticPopupDialogs["EHTWEAKS_EXPORT"] = {
-            text = "Echoes DB Export String:\n(Ctrl+C to copy)", button1 = "Close", hasEditBox = true, editBoxWidth = 350,
-            OnShow = function(self) self.editBox:SetText(str) self.editBox:HighlightText() end,
-            timeout = 0, whileDead = true, hideOnEscape = true
-        }
-        StaticPopup_Show("EHTWEAKS_EXPORT")
-    end)
-
-    local h2 = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    h2:SetPoint("TOPLEFT", exportBtn, "BOTTOMLEFT", 0, -30)
-    h2:SetText("Import Echoes DB from another player.")
-    h2:SetWidth(360)
-    h2:SetJustifyH("LEFT")
-
-    local importBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
-    importBtn:SetSize(160, 30)
-    importBtn:SetPoint("TOPLEFT", h2, "BOTTOMLEFT", 0, -10)
-    importBtn:SetText("Import Echoes")
-    importBtn:SetScript("OnClick", function()
-        StaticPopupDialogs["EHTWEAKS_IMPORT_ECHOES"] = {
-            text = "Paste String:", button1 = "Import", button2 = "Cancel", hasEditBox = true,
-            OnAccept = function(self) 
-                if EHTweaks_ImportEchoes then EHTweaks_ImportEchoes(self.editBox:GetText()) end
-            end,
-            timeout = 0, whileDead = true, hideOnEscape = true
-        }
-        StaticPopup_Show("EHTWEAKS_IMPORT_ECHOES")
-    end)
-    
-    local separator = import:CreateTexture(nil, "ARTWORK")
-    separator:SetHeight(1)
-    separator:SetPoint("TOPLEFT", importBtn, "BOTTOMLEFT", 0, -20)
-    separator:SetPoint("RIGHT", -20, 0)
-    separator:SetTexture("Interface\\Buttons\\WHITE8X8")
-    separator:SetVertexColor(0.4, 0.4, 0.4, 0.5)
-
-    if _G.ETHTweaks_OptionalDB_Data then
-        local starterHeader = import:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        starterHeader:SetPoint("TOPLEFT", separator, "BOTTOMLEFT", 0, -10)
-        starterHeader:SetText("Starter Database Controls")
-        
-        local mergeStarterBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
-        mergeStarterBtn:SetSize(160, 25)
-        mergeStarterBtn:SetPoint("TOPLEFT", starterHeader, "BOTTOMLEFT", 0, -10)
-        mergeStarterBtn:SetText("Merge Starter DB")
-        mergeStarterBtn:SetScript("OnClick", function()
-            local starter = _G.ETHTweaks_OptionalDB_Data
-            if starter and starter.data then
-                local count, err = EHTweaks_ImportEchoes(starter.data)
-                if count > 0 then
-                    print("|cff00ff00EHTweaks:|r Merged Starter DB (" .. count .. " unique echoes ID's added/updated).")
-                    if starter.contributors then
-                         print("|cff00ff00EHTweaks:|r This Echoes DB was created thanks to: " .. starter.contributors)
-                    end
-                    RefreshData()
-                else
-                    if err == "No new data (Database already up-to-date)" then
-                        print("|cffFFFF00EHTweaks:|r Merge complete. No new echoes found.")
-                    else
-                        print("|cffff0000EHTweaks:|r Merge failed: " .. (err or "Unknown"))
-                    end
-                end
-            end
-        end)
-        
-        local overrideStarterBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
-        overrideStarterBtn:SetSize(220, 25)
-        overrideStarterBtn:SetPoint("LEFT", mergeStarterBtn, "RIGHT", 10, 0)
-        overrideStarterBtn:SetText("|cffff7f00Override with Starter DB|r")
-        overrideStarterBtn:SetScript("OnClick", function()
-            StaticPopupDialogs["EHTWEAKS_OVERRIDE"] = {
-                text = "|cffff0000WARNING:|r This will DELETE your current history and replace it with the Starter Database.\nAre you sure?",
-                button1 = "Yes, Override", button2 = "Cancel",
-                OnAccept = function()
-                    EHTweaksDB.seenEchoes = {} 
-                    local starter = _G.ETHTweaks_OptionalDB_Data
-                    if starter and starter.data then
-                        local count, err = EHTweaks_ImportEchoes(starter.data)
-                        if count > 0 then
-                            print("|cff00ff00EHTweaks:|r Database overridden with Starter DB (" .. count .. " unique echoes ID's).")
-                            if starter.contributors then
-                                 print("|cff00ff00EHTweaks:|r This Echoes DB was created thanks to: " .. starter.contributors)
-                            end
-                            RefreshData()
-                        else
-                            print("|cffff0000EHTweaks:|r Override failed: " .. (err or "Unknown"))
-                        end
-                    end
-                end,
-                timeout = 0, whileDead = true, hideOnEscape = true
-            }
-            StaticPopup_Show("EHTWEAKS_OVERRIDE")
-        end)
-        
-        local purgeBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
-        purgeBtn:SetSize(120, 25)
-        purgeBtn:SetPoint("LEFT", overrideStarterBtn, "RIGHT", 10, 0)
-        purgeBtn:SetText("Purge DB")
-        purgeBtn:SetScript("OnClick", function()
-            StaticPopupDialogs["EHTWEAKS_PURGE"] = {
-                text = "Are you sure you want to clear your Echoes History?\nThis cannot be undone.",
-                button1 = "Yes", button2 = "No",
-                OnAccept = function()
-                    EHTweaksDB.seenEchoes = {}
-                    isDataDirty = true
-                    print("|cff00ff00EHTweaks:|r Echoes DB cleared.")
-                    if activeTab == 3 then RefreshData() UpdateScroll() end
-                end,
-                timeout = 0, whileDead = true, hideOnEscape = true
-            }
-            StaticPopup_Show("EHTWEAKS_PURGE")
-        end)
-    else
-        local purgeBtn = CreateFrame("Button", nil, import, "UIPanelButtonTemplate")
-        purgeBtn:SetSize(120, 25)
-        purgeBtn:SetPoint("TOPLEFT", separator, "BOTTOMLEFT", 0, -20)
-        purgeBtn:SetText("Purge DB")
-        purgeBtn:SetScript("OnClick", function()
-            StaticPopupDialogs["EHTWEAKS_PURGE"] = {
-                text = "Are you sure you want to clear your Echoes History?\nThis cannot be undone.",
-                button1 = "Yes", button2 = "No",
-                OnAccept = function()
-                    EHTweaksDB.seenEchoes = {}
-                    isDataDirty = true
-                    print("|cff00ff00EHTweaks:|r Echoes DB cleared.")
-                    if activeTab == 3 then RefreshData() UpdateScroll() end
-                end,
-                timeout = 0, whileDead = true, hideOnEscape = true
-            }
-            StaticPopup_Show("EHTWEAKS_PURGE")
-        end)
-    end
-    
     f:UpdateLayout()
     return f
 end
-
 
 SLASH_EHTBROWSER1 = "/eht"
 SlashCmdList["EHTBROWSER"] = function(msg)
