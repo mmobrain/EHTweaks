@@ -1524,11 +1524,19 @@ end
 
 local ehObjectiveFrame = nil
 
-local function UpdateEHObjectiveDisplay(objective)
+function UpdateEHObjectiveDisplay(objective)
     if not ehObjectiveFrame then return end
     
     if not objective or not EHTweaksDB.enableTracker then
         ehObjectiveFrame:Hide()
+        ehObjectiveFrame.objectiveData = nil -- Explicitly clear data
+        
+        -- Force MiniRunBar to clear icons immediately
+        if miniBarFrame then
+            miniBarFrame.rewardIcon:Hide()
+            miniBarFrame.curseIcon:Hide()
+            miniBarFrame.objectiveData = nil
+        end
         return
     end
 
@@ -1550,7 +1558,12 @@ local function UpdateEHObjectiveDisplay(objective)
     
     ehObjectiveFrame.objectiveData = objective
     ehObjectiveFrame:Show()
+    
+    -- Force MiniRunBar update if it exists
+    if SyncMiniTracker then SyncMiniTracker() end
 end
+
+
 
 local function AddEHTLabel()
     local parent = _G.ProjectEbonholdPlayerRunFrame
@@ -1586,6 +1599,9 @@ local function InitEHObjectiveTracker()
         f:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -50, -10)
     end
     
+    -- =========================================================
+    -- Icons: reward + curse (only when active objective exists)
+    -- =========================================================
     local reward = f:CreateTexture(nil, "ARTWORK")
     reward:SetSize(22, 22)
     reward:SetPoint("RIGHT", 0, 0)
@@ -1610,9 +1626,12 @@ local function InitEHObjectiveTracker()
     cBorder:SetPoint("CENTER", curse, "CENTER", 0, 0)
     f.cBorder = cBorder
     
-    local btn = CreateFrame("Button", nil, f)
-    btn:SetAllPoints(f)
-    btn:SetScript("OnEnter", function(self)
+    -- =========================================================
+    -- Hover button for ACTIVE objective tooltip
+    -- =========================================================
+    local hoverBtn = CreateFrame("Button", nil, f)
+    hoverBtn:SetAllPoints(f)
+    hoverBtn:SetScript("OnEnter", function(self)
         local obj = f.objectiveData
         if not obj then return end
         
@@ -1624,7 +1643,7 @@ local function InitEHObjectiveTracker()
             GameTooltip:AddLine(obj.objectiveText, 0.9, 0.9, 0.9, true)
         end
         
-        if obj.bonusSpellId then
+        if obj.bonusSpellId and obj.bonusSpellId > 0 then
             local name = GetSpellInfo(obj.bonusSpellId)
             local desc = GetSpellDescription_Local(obj.bonusSpellId)
             
@@ -1636,7 +1655,7 @@ local function InitEHObjectiveTracker()
             end
         end
         
-        if obj.malusSpellId then
+        if obj.malusSpellId and obj.malusSpellId > 0 then
             local name = GetSpellInfo(obj.malusSpellId)
             local desc = GetSpellDescription_Local(obj.malusSpellId)
             
@@ -1647,10 +1666,13 @@ local function InitEHObjectiveTracker()
                 GameTooltip:AddLine(desc, 1, 0.82, 0, true)
             end
         end
+        
         GameTooltip:Show()
     end)
-    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    hoverBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f.hoverBtn = hoverBtn
     
+    f.objectiveData = nil
     ehObjectiveFrame = f
     
     if ProjectEbonhold.ObjectivesUI and ProjectEbonhold.ObjectivesUI.UpdateTracker then
@@ -2542,10 +2564,10 @@ local function CreateMiniRunBar(mainFrame)
         SaveMiniPosition(self)
     end)
 
-    -- [1] Maximize Button (Moved to LEFT)
+    -- [1] Maximize Button
     local maxBtn = CreateFrame("Button", nil, f)
     maxBtn:SetSize(16, 16)
-    maxBtn:SetPoint("LEFT", f, "LEFT", -1, 5) -- Inside Left
+    maxBtn:SetPoint("LEFT", f, "LEFT", -1, 5)
     maxBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Up")
     maxBtn:SetPushedTexture("Interface\\Buttons\\UI-Panel-BiggerButton-Down")
     maxBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
@@ -2558,13 +2580,45 @@ local function CreateMiniRunBar(mainFrame)
             if ehObjectiveFrame then ehObjectiveFrame:Show() end
         end
     end)
-    f.maxBtn = maxBtn -- Store for reference
+    f.maxBtn = maxBtn
 
-    -- [2] Icons (To the right of Maximize Button)
+    -- Standardized Tooltip Logic for MiniRunBar
+    local function ShowTooltip(self)
+        if not self.spellId then return end
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetHyperlink("spell:" .. self.spellId)
+        
+        if self.isReward then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cff00FF00Reward|r", 1, 1, 1)
+            GameTooltip:AddLine("Earned upon completing this objective.", 1, 0.82, 0, true)
+        else
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cffFF0000Curse|r", 1, 1, 1)
+            GameTooltip:AddLine("Active while pursuing this objective.", 1, 0.3, 0.3, true)
+        end
+        
+        -- Append the Objective info (What to do) from the stored data
+        if f.objectiveData then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(f.objectiveData.title or "Objective", 1, 0.82, 0)
+            if f.objectiveData.objectiveText and f.objectiveData.objectiveText ~= "" then
+                GameTooltip:AddLine(f.objectiveData.objectiveText, 0.9, 0.9, 0.9, true)
+            end
+        end
+        
+        GameTooltip:Show()
+    end
+    
+    local function HideTooltip(self) GameTooltip:Hide() end
+
+    -- [2] Icons
     local reward = CreateFrame("Button", nil, f)
     reward:SetSize(20, 20)
     reward:SetPoint("LEFT", maxBtn, "RIGHT", 6, -5) 
     reward:EnableMouse(true)
+    reward:SetScript("OnEnter", ShowTooltip)
+    reward:SetScript("OnLeave", HideTooltip)
     reward:Hide()
     f.rewardIcon = reward
     
@@ -2572,17 +2626,17 @@ local function CreateMiniRunBar(mainFrame)
     curse:SetSize(20, 20)
     curse:SetPoint("LEFT", reward, "RIGHT", 2, 0) 
     curse:EnableMouse(true)
+    curse:SetScript("OnEnter", ShowTooltip)
+    curse:SetScript("OnLeave", HideTooltip)
     curse:Hide()
     f.curseIcon = curse
 
-    -- [3] Progress Bar (Remaining space to Right)
+    -- [3] Progress Bar
     local bar = CreateFrame("StatusBar", nil, f)
     bar:SetPoint("TOP", 0, -2)
     bar:SetPoint("BOTTOM", 0, 2)
-    
-    -- Anchor Left: 16(btn)+5(pad)+20(icon)+2+20(icon)+2 ~= 65px safe start
     bar:SetPoint("LEFT", f, "LEFT", 70, 0) 
-    bar:SetPoint("RIGHT", f, "RIGHT", -5, 0) -- Stretch to right edge
+    bar:SetPoint("RIGHT", f, "RIGHT", -5, 0)
     
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetStatusBarColor(0.6, 0.0, 0.8, 0.8)
@@ -2603,122 +2657,90 @@ local function CreateMiniRunBar(mainFrame)
     f:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
     
     -- "E" button (Toggle My Echoes)
-	if not f.ehtEchoBtn then
-	    local eb = CreateFrame("Button", nil, f)
-	    eb:SetSize(10, 10)
+    if not f.ehtEchoBtn then
+        local eb = CreateFrame("Button", nil, f)
+        eb:SetSize(10, 10)
+        eb:SetPoint("TOPLEFT", maxBtn, "BOTTOMLEFT", 3, 2)
+        eb:SetFrameLevel(maxBtn:GetFrameLevel() + 5)
+        eb:EnableMouse(true)
+        eb:RegisterForClicks("LeftButtonUp")
 
-	    
-	    eb:SetPoint("TOPLEFT", maxBtn, "BOTTOMLEFT", 3, 2)
-
-	    eb:SetFrameLevel(maxBtn:GetFrameLevel() + 5)
-	    eb:EnableMouse(true)
-	    eb:RegisterForClicks("LeftButtonUp")
-
-	    -- Small background so it reads as a button
-	    local bg = eb:CreateTexture(nil, "BACKGROUND")
-	    bg:SetAllPoints()
-	    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-	    bg:SetVertexColor(0, 0, 0, 0.35)
-	    eb.bg = bg
-
-	    -- Text "E" (don’t rely on Button:SetText unless using a template)
-	    local txt = eb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	    txt:SetPoint("CENTER", 0, 0)
-	    txt:SetText("E")
-	    txt:SetTextColor(1, 1, 1)
-	    eb.txt = txt
-
-	    eb:SetScript("OnEnter", function(self)
-		  self.bg:SetVertexColor(0.2, 0.2, 0.2, 0.75)
-		  self.txt:SetTextColor(0.7, 1.0, 0.7)
-
-		  GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		  GameTooltip:SetText("Toggle My Echoes", 1, 1, 1)
-		  GameTooltip:AddLine("Keybind: EHTweaks → Toggle My Echoes", 0.7, 0.7, 0.7, true)
-		  GameTooltip:Show()
-	    end)
-
-	    eb:SetScript("OnLeave", function(self)
-		  self.bg:SetVertexColor(0, 0, 0, 0.35)
-		  self.txt:SetTextColor(1, 1, 1)
-		  GameTooltip:Hide()
-	    end)
-
-	    eb:SetScript("OnClick", function()
-		  if EHTweaks_ToggleEchoes then
-			EHTweaks_ToggleEchoes()
-		  end
-	    end)
-
-	    f.ehtEchoBtn = eb
-	end
-
-    
-    -- Red Vertical Lines
-    local function CreateMarkers()
-        local w = bar:GetWidth()
-        if w <= 0 then C_Timer.After(0.5, CreateMarkers) return end
+        local btnBg = eb:CreateTexture(nil, "BACKGROUND")
+        btnBg:SetAllPoints()
+        btnBg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        btnBg:SetVertexColor(0.2, 0.2, 0.2, 0.8)
         
-        if f.markers then return end
-        f.markers = {}
+        local label = eb:CreateFontString(nil, "OVERLAY", "SystemFont_Outline_Small")
+        label:SetPoint("CENTER", 0, 0)
+        label:SetText("E")
+        label:SetTextColor(0.44, 0.83, 1.0, 1)
+
+        eb:SetScript("OnClick", function()
+            if EHTweaks_ToggleEchoes then EHTweaks_ToggleEchoes() end
+        end)
         
-        for _, thresh in ipairs(INTENSITY_THRESHOLDS) do
-            local ratio = thresh / MAX_INTENSITY
-            local xPos = w * ratio
-            
-            local line = bar:CreateTexture(nil, "OVERLAY")
-            line:SetSize(1, 6) 
-            line:SetPoint("CENTER", bar, "LEFT", xPos, -8) -- Bottom edge area
-            line:SetTexture("Interface\\Buttons\\WHITE8X8")
-            line:SetVertexColor(1, 0, 0, 1) 
-            
-            table.insert(f.markers, line)
-        end
+        eb:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("My Echoes", 0.44, 0.83, 1.0)
+            GameTooltip:AddLine("View your collected Echoes.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        eb:SetScript("OnLeave", HideTooltip)
+        
+        f.ehtEchoBtn = eb
     end
-    
-    bar:SetScript("OnSizeChanged", function() 
-        if f.markers then 
-             local w = bar:GetWidth()
-             for i, line in ipairs(f.markers) do
-                 local thresh = INTENSITY_THRESHOLDS[i]
-                 if thresh then
-                     local ratio = thresh / MAX_INTENSITY
-                     line:SetPoint("CENTER", bar, "LEFT", w * ratio, -8)
-                 end
-             end
-        else
-            CreateMarkers()
-        end
-    end)
 
-    -- Text (High)
-    f.text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    f.text:SetPoint("CENTER", 0, 4) 
-    f.text:SetText("Loading...")
-    f.text:SetShadowOffset(1, -1)
-    
-    -- Tooltip logic
-    local function ShowTooltip(self)
-        if self.spellId then
-             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-             local name = GetSpellInfo(self.spellId)
-             local desc = GetMiniSpellDesc(self.spellId) 
-             if name then
-                 local color = self.isReward and "|cff44ff44" or "|cffff4444"
-                 local label = self.isReward and "Reward" or "Curse"
-                 GameTooltip:AddLine(color .. label .. "|r: " .. name, 1, 1, 1)
-                 if desc and desc ~= "" then GameTooltip:AddLine(desc, 1, 0.82, 0, true) end
-                 GameTooltip:Show()
-             end
-        end
-    end
-    local function HideTooltip(self) GameTooltip:Hide() end
-    reward:SetScript("OnEnter", ShowTooltip) reward:SetScript("OnLeave", HideTooltip)
-    curse:SetScript("OnEnter", ShowTooltip) curse:SetScript("OnLeave", HideTooltip)
+    local text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("CENTER", 0, 0)
+    text:SetText("Intensity: 0")
+    f.text = text
 
-    f:Hide()
     miniBarFrame = f
-    return f
+    return miniBarFrame
+end
+
+
+
+local function SyncMiniTracker()
+    if not miniBarFrame then return end
+    
+    local obj = ProjectEbonhold.ObjectivesService and ProjectEbonhold.ObjectivesService.GetActiveObjective()
+    miniBarFrame.objectiveData = obj -- Store data for the tooltip
+    
+    if obj and EHTweaksDB.enableTracker then
+        local hasReward = (obj.bonusSpellId and obj.bonusSpellId > 0)
+        local hasCurse = (obj.malusSpellId and obj.malusSpellId > 0)
+
+        if hasReward then
+            local _, _, icon = GetSpellInfo(obj.bonusSpellId)
+            miniBarFrame.rewardIcon:SetNormalTexture(icon) 
+            miniBarFrame.rewardIcon.spellId = obj.bonusSpellId 
+            miniBarFrame.rewardIcon.isReward = true 
+            miniBarFrame.rewardIcon:Show()
+        else
+            miniBarFrame.rewardIcon:Hide()
+        end
+
+        if hasCurse then
+            local _, _, icon = GetSpellInfo(obj.malusSpellId)
+            miniBarFrame.curseIcon:SetNormalTexture(icon)
+            miniBarFrame.curseIcon.spellId = obj.malusSpellId 
+            miniBarFrame.curseIcon.isReward = false 
+            miniBarFrame.curseIcon:Show()
+            
+            -- Adjust layout if there is no reward icon pushing it to the right
+            if not hasReward then
+                miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.maxBtn, "RIGHT", 6, -5)
+            else
+                miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.rewardIcon, "RIGHT", 2, 0)
+            end
+        else
+            miniBarFrame.curseIcon:Hide()
+        end
+    else
+        miniBarFrame.rewardIcon:Hide()
+        miniBarFrame.curseIcon:Hide()
+    end
 end
 
 local function UpdateMiniBarText()
@@ -2845,3 +2867,36 @@ loader:SetScript("OnEvent", function()
     InitMinimizer(0) 
 end)
 
+-- =========================================================
+-- DEBUG & MANUAL TRIGGER SLASH COMMANDS
+-- =========================================================
+SLASH_EHTWEAKSBOARD1 = "/ehtb"
+SlashCmdList["EHTWEAKSBOARD"] = function()
+    if ToggleRemoteBoard then
+        ToggleRemoteBoard()
+    elseif EHTweaks_ToggleRemoteObjectivesBoard then
+        EHTweaks_ToggleRemoteObjectivesBoard()
+    else
+        print("|cffff0000EHTweaks:|r Remote Board function not found. Did you add the UI code block?")
+    end
+end
+
+SLASH_EHTWEAKSBAR1 = "/ehtbar"
+SlashCmdList["EHTWEAKSBAR"] = function()
+    print("|cff00FF00[EHTweaks]|r Forcing Tracker Refresh (Idle Mode).")
+    
+    -- Force the tracker to evaluate as if an objective just completed
+    if UpdateEHObjectiveDisplay then
+        UpdateEHObjectiveDisplay(nil)
+    end
+    
+    -- Debug print to see what Ebonhold has in memory right now
+    if ProjectEbonhold and ProjectEbonhold.ObjectivesService then
+        local proposals = ProjectEbonhold.ObjectivesService.GetCurrentObjectives()
+        if proposals then
+            print("Ebonhold Memory: Found " .. #proposals .. " proposals.")
+        else
+            print("Ebonhold Memory: Proposals table is nil.")
+        end
+    end
+end

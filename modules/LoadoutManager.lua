@@ -59,7 +59,6 @@ if not Skin.ApplyInset then
     end
 end
 
-
 _G.EHTweaks = _G.EHTweaks or addon
 EHTweaks.Loadout = EHTweaks.Loadout or {
     managerFrame = nil,
