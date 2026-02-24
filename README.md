@@ -35,20 +35,13 @@ It extends the default Project Ebonhold interface with searching, filtering, bui
 *   **Skill Tree Tab**: A searchable list of every node available in the tree.
 *   **My Echoes Tab**: View all your collected Perks (Echoes) in one consolidated list.
 *   **Jump-to-Tree**: Clicking a skill in the browser automatically opens the Skill Tree, scrolls to that node, and highlights it with an orange pulsing glow.
-*   **Favored Echos**: Right-click (Echoes DB) or Shift+Right-click ("My Echoes", "Echo selection/draft UI") an Echo to mar it as **FAVOURED** it; favored Echoes are pinned to the top and marked with a diamond icon and "FAVOURED" label.
-*   **Delete Echo**: Alt+Left-click to delete Echo from Echoes DB.
+*   **Favored Echos**: Right-click ("Echoes Browser") or Shift+Right-click ("My Echoes", "Echo selection/draft UI") an Echo to mar it as **FAVOURED** it; favored Echoes are pinned to the top and marked with a diamond icon and "FAVOURED" label.
 *   **Quick Access**: Open "My Echoes" by clicking the "E" button on the custom MiniRunBar.
 
 (alpha 0.0.3)
 
 ![ETH tweaks 2](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/2.gif)
 
-*   **Echoes DB tab**: View all discovered Perks (Echoes) across all your sessions.
-*   **Import/Export tab**: Share your discovered Echoes database with friends or apply external data to complete your compendium.
-
-(alpha 0.0.5)
-
-![ETH tweaks 4](https://raw.githubusercontent.com/mmobrain/stuffforstuff/main/ETHtweaks_stuff/3.gif)
 
 ### 🪄 Smart Tooltips
 *   **Rank Merging**: In the Compendium, skills with multiple ranks combine values into a single view (e.g., "Deals 10/20/30 damage") so you can see the full progression at a glance.
