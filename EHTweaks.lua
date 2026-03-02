@@ -2331,6 +2331,15 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
                         
             end)
         end
+	  
+    -- Hook AcceptDeath to properly clear the stale "x1" perk cache ONLY when starting a new run
+        if ProjectEbonhold and ProjectEbonhold.PlayerRunService and ProjectEbonhold.PlayerRunService.AcceptDeath then
+            hooksecurefunc(ProjectEbonhold.PlayerRunService, "AcceptDeath", function()
+                if ProjectEbonhold.Perks then
+                    ProjectEbonhold.Perks.grantedPerks = {}
+                end
+            end)
+        end
       
       if CTimer and CTimer.After and ProjectEbonhold then
         CTimer.After(2, function()		

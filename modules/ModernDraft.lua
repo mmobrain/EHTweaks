@@ -518,11 +518,23 @@ end
 
 local function GetOwnedCount(spellName)
     local count = 0
+    -- Count Echoes from current run session
     if ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.GetGrantedPerks then
         local granted = ProjectEbonhold.PerkService.GetGrantedPerks()
         if granted and granted[spellName] then
             for _, instance in ipairs(granted[spellName]) do
                 count = count + (instance.stack or 1)
+            end
+        end
+    end
+    -- Count Permanent Echoes (Locked)
+    if ProjectEbonhold.PerkService and ProjectEbonhold.PerkService.GetLockedPerks then
+        local locked = ProjectEbonhold.PerkService.GetLockedPerks()
+        if locked then
+            for _, info in ipairs(locked) do
+                if GetSpellInfo(info.spellId) == spellName then
+                    count = count + (info.stack or 1)
+                end
             end
         end
     end
