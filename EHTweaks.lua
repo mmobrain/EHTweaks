@@ -2325,8 +2325,7 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
         end
         
         if ProjectEbonhold and ProjectEbonhold.PerkUI and ProjectEbonhold.PerkUI.Show then
-            hooksecurefunc(ProjectEbonhold.PerkUI, "Show", function(choices)
-                RecordDraftEchoes(choices)
+            hooksecurefunc(ProjectEbonhold.PerkUI, "Show", function(choices)                
                 SetupPerkButtons()
                         
             end)
