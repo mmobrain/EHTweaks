@@ -1532,18 +1532,32 @@ function UpdateEHObjectiveDisplay(objective)
     if SyncMiniTracker then SyncMiniTracker() end
 end
 
+-- Helper: Toggle the Browser Frame (Global for keybinds/macros)
+function EHTweaks_ToggleBrowser()
+    if _G.EHTweaks_BrowserFrame then
+        if _G.EHTweaks_BrowserFrame:IsShown() then
+            _G.EHTweaks_BrowserFrame:Hide()
+        else
+            _G.EHTweaks_BrowserFrame:Show()
+        end
+    else
+        if SlashCmdList["EHTBROWSER"] then
+            SlashCmdList["EHTBROWSER"]("")
+        else
+            print("|cffff0000EHTweaks:|r Browser module not loaded.")
+        end
+    end
+end
 
-
+-- Function to add EHT Label and the Compendium Browser button (book icon)
 local function AddEHTLabel()
     local parent = _G.ProjectEbonholdPlayerRunFrame
     if not parent or parent.ehtLabel then return end
-    
     
     local container = CreateFrame("Frame", nil, parent)
     container:SetFrameLevel(parent:GetFrameLevel() + 10)
     container:SetSize(50, 30)
     container:SetPoint("TOPLEFT", parent, "TOPLEFT", 24, -10)
-    
     
     local label = container:CreateFontString(nil, "OVERLAY", "SystemFont_Outline_Small")
     label:SetPoint("LEFT", container, "LEFT", 0, 0)
@@ -1553,6 +1567,54 @@ local function AddEHTLabel()
     
     parent.ehtLabel = label
     parent.ehtLabelContainer = container
+
+    -- "C" button (Compendium) - Main Panel with Book Icon
+    if not parent.ehtCompendiumBtn then
+        local cb = CreateFrame("Button", nil, parent)
+        cb:SetSize(18, 18)
+        -- The user prefers this initial position:
+        cb:SetPoint("LEFT", label, "RIGHT", 140, -25) 
+        cb:SetFrameLevel(parent:GetFrameLevel() + 20)
+        cb:EnableMouse(true)
+        cb:RegisterForClicks("LeftButtonUp")
+
+        local tex = cb:CreateTexture(nil, "OVERLAY")
+        tex:SetAllPoints()
+        tex:SetTexture("Interface\\Icons\\INV_Misc_Book_03")
+        -- Fallback if icon is missing
+        if not tex:GetTexture() then
+            tex:SetTexture("Interface\\Icons\\Spell_Monk_BrewmasterTraining")
+        end
+        cb.tex = tex
+        
+        cb:SetScript("OnClick", EHTweaks_ToggleBrowser)
+        cb:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Ebonhold Compendium", 0.8, 0.8, 1.0)
+            GameTooltip:AddLine("Search spells and echoes.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        parent.ehtCompendiumBtn = cb
+
+        -- Dynamic re-anchoring to the Ash Multiplier percentage string
+        C_Timer.NewTicker(1, function()
+            if not parent or not parent.ehtCompendiumBtn then return end
+            
+            local regions = {parent:GetRegions()}
+            for _, reg in ipairs(regions) do
+                if reg:IsObjectType("FontString") then
+                    local txt = reg:GetText() or ""
+                    if txt:find("%%") and reg:IsShown() then
+                        parent.ehtCompendiumBtn:ClearAllPoints()
+                        parent.ehtCompendiumBtn:SetPoint("LEFT", reg, "RIGHT", 6, 0)
+                        break
+                    end
+                end
+            end
+        end)
+    end
 end
 
 local function InitEHObjectiveTracker()
@@ -1643,7 +1705,6 @@ local function InitEHObjectiveTracker()
     
     f.objectiveData = nil
     ehObjectiveFrame = f
-    
     if ProjectEbonhold.ObjectivesUI and ProjectEbonhold.ObjectivesUI.UpdateTracker then
         hooksecurefunc(ProjectEbonhold.ObjectivesUI, "UpdateTracker", function(objective)
             UpdateEHObjectiveDisplay(objective)
@@ -1652,8 +1713,10 @@ local function InitEHObjectiveTracker()
 end
 
 -- =========================================================
--- SECTION 7: MINIMAP BUTTON
+-- SECTION 7: BROWSER TOGGLE & MINIMAP BUTTON
 -- =========================================================
+
+-- Section 7 moved and consolidated above
 
 local function UpdateMinimapButtonPosition(angle)
     if not minimapButton then return end
@@ -1707,21 +1770,7 @@ local function CreateMinimapButton()
     minimapButton:RegisterForClicks("LeftButtonUp")
     minimapButton:SetScript("OnClick", function(self, btn)
         if btn == "LeftButton" then
-            -- Open Browser (requires Browser.lua to be loaded)
-            if _G.EHTweaks_BrowserFrame then
-                if _G.EHTweaks_BrowserFrame:IsShown() then
-                    _G.EHTweaks_BrowserFrame:Hide()
-                else
-                    _G.EHTweaks_BrowserFrame:Show()
-                end
-            else
-                -- Trigger the slash command to create the frame if it doesn't exist
-                if SlashCmdList["EHTBROWSER"] then
-                    SlashCmdList["EHTBROWSER"]("")
-                else
-                    print("|cffff0000EHTweaks:|r Browser module not loaded.")
-                end
-            end
+            EHTweaks_ToggleBrowser()
         end
     end)
     
@@ -1909,12 +1958,6 @@ local function CheckLockedEchoes()
     else
         -- Has NO echoes at all (Do nothing)
         EHTweaks_Log("Death Check: No echoes active")
-    end
-end
-
-local function HideWarningFrame()
-    if warningFrame then
-        warningFrame:Hide()
     end
 end
 
@@ -2685,6 +2728,28 @@ local function CreateMiniRunBar(mainFrame)
         f.ehtEchoBtn = eb
     end
 
+    -- "C" button (Compendium) - MiniBar
+    local cb = CreateFrame("Button", nil, f)
+    cb:SetSize(10, 10)
+    cb:SetPoint("TOPLEFT", f.ehtEchoBtn or maxBtn, "TOPRIGHT", 11, (f.ehtEchoBtn and 0 or -10))
+    cb:SetFrameLevel(maxBtn:GetFrameLevel() + 5)
+    cb:EnableMouse(true)
+    cb:SetScript("OnClick", EHTweaks_ToggleBrowser)
+    cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    cb:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Ebonhold Compendium", 0.8, 0.8, 1.0)
+        GameTooltip:AddLine("Search spells and echoes.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+
+    local btnLabel = cb:CreateFontString(nil, "OVERLAY", "SystemFont_Outline_Small")
+    btnLabel:SetPoint("CENTER", 0, 0)
+    btnLabel:SetText("C")
+    btnLabel:SetTextColor(0.8, 0.8, 1, 1)
+
+    f.ehtCompendiumBtn = cb
+
     local text = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("CENTER", 0, 0)
     text:SetText("Intensity: 0")
@@ -2693,9 +2758,6 @@ local function CreateMiniRunBar(mainFrame)
     miniBarFrame = f
     return miniBarFrame
 end
-
-
-
 local function SyncMiniTracker()
     if not miniBarFrame then return end
     
@@ -2757,45 +2819,6 @@ local function UpdateMiniBarText()
         miniBarFrame.bar:SetValue(int)
         if int >= 475 then miniBarFrame.bar:SetStatusBarColor(1, 0, 0)
         else miniBarFrame.bar:SetStatusBarColor(0.6, 0.0, 0.8) end
-    end
-end
-
-local function SyncMiniTracker()
-    if not miniBarFrame then return end
-    
-    if ehObjectiveFrame and ehObjectiveFrame.objectiveData then
-         local obj = ehObjectiveFrame.objectiveData
-         local hasReward = (obj.bonusSpellId and obj.bonusSpellId > 0)
-         local hasCurse = (obj.malusSpellId and obj.malusSpellId > 0)
-
-         if hasReward then
-             local _, _, icon = GetSpellInfo(obj.bonusSpellId)
-             miniBarFrame.rewardIcon:SetNormalTexture(icon) 
-             miniBarFrame.rewardIcon.spellId = obj.bonusSpellId 
-             miniBarFrame.rewardIcon.isReward = true 
-             miniBarFrame.rewardIcon:Show()
-         else
-             miniBarFrame.rewardIcon:Hide()
-         end
-         
-         if hasCurse then
-             local _, _, icon = GetSpellInfo(obj.malusSpellId)
-             miniBarFrame.curseIcon:SetNormalTexture(icon)
-             miniBarFrame.curseIcon.spellId = obj.malusSpellId 
-             miniBarFrame.curseIcon.isReward = false 
-             miniBarFrame.curseIcon:Show()
-             
-             if not hasReward then
-                 miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.maxBtn, "RIGHT", 4, 0)
-             else
-                 miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.rewardIcon, "RIGHT", 2, 0)
-             end
-         else
-             miniBarFrame.curseIcon:Hide()
-         end
-    else
-         miniBarFrame.rewardIcon:Hide()
-         miniBarFrame.curseIcon:Hide()
     end
 end
 
@@ -2864,16 +2887,18 @@ local function InitMinimizer(numTries)
             mainFrame:Hide()
             if ehObjectiveFrame then ehObjectiveFrame:Hide() end
             mini:Show()
-            UpdateMiniBarText()
-            SyncMiniTracker()
         else
             mini:Hide()
+            mainFrame:Show()
+            if ehObjectiveFrame and ehObjectiveFrame.objectiveData then
+                ehObjectiveFrame:Show()
+            end
         end
+        UpdateMiniBarText()
+        SyncMiniTracker()
     end
 
     ApplyState()
-    
-    -- Safety triggers to ensure ProjectEbonhold's delayed loading doesn't override our state
     C_Timer.After(0.5, ApplyState)
     C_Timer.After(2.0, ApplyState)
 end
