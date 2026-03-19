@@ -2474,7 +2474,6 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
              end
         end)
       
-    
         -- --- SILENT SKILL TREE DATA REQUEST (PRELOAD CHARACTER ID) ---        
         C_Timer.After(3, function()
             -- 1. Check if we already have the ID (Success condition)
@@ -2660,10 +2659,10 @@ local function CreateMiniRunBar(mainFrame)
     
     local function HideTooltip(self) GameTooltip:Hide() end
 
-    -- [2] Icons
+    -- [2] Objective Board Icons
     local reward = CreateFrame("Button", nil, f)
     reward:SetSize(20, 20)
-    reward:SetPoint("LEFT", maxBtn, "RIGHT", 6, -5) 
+    reward:SetPoint("LEFT", maxBtn, "RIGHT", 26, -5) 
     reward:EnableMouse(true)
     reward:SetScript("OnEnter", ShowTooltip)
     reward:SetScript("OnLeave", HideTooltip)
@@ -2793,7 +2792,7 @@ local function SyncMiniTracker()
             
             -- Adjust layout if there is no reward icon pushing it to the right
             if not hasReward then
-                miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.maxBtn, "RIGHT", 6, -5)
+                miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.maxBtn, "RIGHT", 26, -5)
             else
                 miniBarFrame.curseIcon:SetPoint("LEFT", miniBarFrame.rewardIcon, "RIGHT", 2, 0)
             end
