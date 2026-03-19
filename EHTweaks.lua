@@ -1961,6 +1961,12 @@ local function CheckLockedEchoes()
     end
 end
 
+local function HideWarningFrame()
+    if warningFrame then
+        warningFrame:Hide()
+    end
+end
+
 -- =========================================================
 -- SECTION: DRAFT ECHO RECORDING & FAVORITES
 -- =========================================================
